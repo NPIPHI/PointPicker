@@ -1,0 +1,22 @@
+{
+  "name": "pointpicker",
+  "version": "1.0.0",
+  "description": "Assign points to shapefiles",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Nicholas Phillips",
+  "license": "ISC",
+  "dependencies": {
+    "@types/proj4": "^2.5.2",
+    "@types/shapefile": "^0.6.1",
+    "@types/wicg-file-system-access": "^2020.9.5",
+    "lit": "^2.2.0",
+    "ol": "^6.13.0",
+    "proj4": "^2.8.0",
+    "shapefile": "^0.6.6",
+    "ts-loader": "^9.2.8",
+    "typescript": "^4.6.2",
+    "webpack": "^5.70.0"
+  }
+}
