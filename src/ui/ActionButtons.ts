@@ -3,15 +3,18 @@ import {customElement, property} from "lit/decorators.js"
 
 @customElement("action-buttons")
 export class ActionButtons extends LitElement {
-    @property()
-    on_load_shapefiles: ()=>void = ()=>{}
-    on_save: ()=>void = ()=>{}
 
+    on_load_shapefiles(){
+        this.dispatchEvent(new CustomEvent("load-shapefiles"));
+    }
+
+    on_save(){
+        this.dispatchEvent(new CustomEvent("save-changes"));
+    }
     render() {
         return html`
             <button @click=${()=>this.on_load_shapefiles()}>Load Shapefile</button>
             <button @click=${()=>this.on_save()}>Save Changes</button>
-
         `
     }
 

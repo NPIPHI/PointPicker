@@ -10,6 +10,7 @@ import Stroke from "ol/style/Stroke";
 import Fill from "ol/style/Fill";
 import VectorSource from "ol/source/Vector";
 import VectorImageLayer from "ol/layer/VectorImage";
+const dbf: { structure: (data: any[], meta?: any[])=> ArrayBuffer} = require("./dbf/index");
 
 /**
  * Loads a projection from a .prj file
@@ -26,7 +27,7 @@ async function load_projection(file: FileSystemFileHandle, dest_projection: stri
 }
 
 
-export type DbfFeature = Feature<Geometry> & { dbf_properties?: any }
+export type DbfFeature = Feature<Geometry> & { dbf_properties?: any, parent_shapefile: Shapefile }
 
 
 /**
@@ -99,7 +100,7 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
 
     const dbf_props = Object.keys(shapes.features[0]?.properties);
 
-    return new Shapefile(filename, geo_json, dbf_props);
+    return new Shapefile(filename, geo_json, dbf_props, dbf_file);
 }
 
 /**
@@ -127,8 +128,11 @@ export class Shapefile {
     private visible_props: string[] = [];
     routes?: {available: string[], visible: string[]};
     private line_width: number;
-    constructor(public name : string, public features: DbfFeature[], public props: string[]){
-        this.line_width = 1;
+    private highlighted: DbfFeature[] = [];
+    private modified: boolean = false;
+    constructor(public name : string, public features: DbfFeature[], public props: string[], private dbf_file: FileSystemFileHandle){
+        features.forEach(f=>f.parent_shapefile=this);
+        this.line_width = 2;
         this.set_visible_props([]);
         const vector_source = new VectorSource({
             features: this.features,
@@ -168,7 +172,7 @@ export class Shapefile {
         return text;
     }
 
-    protected text_style(feature: DbfFeature, props: string[]){
+    private text_style(feature: DbfFeature, props: string[]){
         return new Style({
             text: new Text({
                 text: this.text_of(feature, props)
@@ -176,20 +180,58 @@ export class Shapefile {
         })
     }
 
-    protected base_style(feature: DbfFeature): Style {
+    private highlight_style(feature: DbfFeature): Style {
         const geo = feature.getGeometry();
         if(geo.getType() == "Point"){
             const pt = (geo as Point).getFlatCoordinates();
             return new Style({
                 stroke: new Stroke({
-                    width: this.line_width,
-                    color: 'blue'
+                    width: this.line_width * 2,
+                    color: 'red'
                 }),
                 fill: new Fill({
-                    color: "lightblue"
+                    color: "green"
                 }),
-                geometry: new Circle(pt, 3)
+                geometry: new Circle(pt, 4)
             })
+        } else {
+            return new Style({
+                stroke: new Stroke({
+                    width: this.line_width * 2,
+                    color: 'blue'
+                })
+            })
+        }
+    }
+
+    private base_style(feature: DbfFeature): Style {
+        const geo = feature.getGeometry();
+        if(geo.getType() == "Point"){
+            const pt = (geo as Point).getFlatCoordinates();
+
+            if(feature.dbf_properties.SectionID){  
+                return new Style({
+                    stroke: new Stroke({
+                        width: this.line_width,
+                        color: 'gray'
+                    }),
+                    fill: new Fill({
+                        color: "gray"
+                    }),
+                    geometry: new Circle(pt, 2)
+                })
+            } else {
+            return new Style({
+                    stroke: new Stroke({
+                        width: this.line_width,
+                        color: 'blue'
+                    }),
+                    fill: new Fill({
+                        color: "lightblue"
+                    }),
+                    geometry: new Circle(pt, 3)
+                })
+            }
         } else {
             return new Style({
                 stroke: new Stroke({
@@ -201,18 +243,27 @@ export class Shapefile {
     }
 
     restyle_all(){
+        const highlighted_set = new Set(this.highlighted);
         if(this.routes){
             let route_set = new Set(this.routes.visible);
             this.features.forEach(f=>{
                 if(route_set.has(f.dbf_properties.Route)){
-                    f.setStyle([this.base_style(f), this.text_style(f, this.visible_props)])
+                    if(highlighted_set.has(f)){
+                        f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)])
+                    } else {
+                        f.setStyle([this.base_style(f), this.text_style(f, this.visible_props)])
+                    }
                 } else {
                     f.setStyle(new Style());
                 }
             })
         } else {
             this.features.forEach(f=>{
-                f.setStyle([this.base_style(f), this.text_style(f, this.visible_props)])
+                if(highlighted_set.has(f)){
+                    f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)])
+                } else {
+                    f.setStyle([this.base_style(f), this.text_style(f, this.visible_props)])
+                }
             })
         }
     }
@@ -234,5 +285,75 @@ export class Shapefile {
     set_line_width(width: number){
         this.line_width = width;
         this.restyle_all();
+    }
+
+    associate_points(p1: DbfFeature, p2: DbfFeature, section: DbfFeature){
+        if(p1.getGeometry().getType() != "Point" || p2.getGeometry().getType() != "Point"){
+            throw new Error("Bad geometry types for p1, p2");
+        }
+
+        const id = section.dbf_properties.UniqueID;
+
+        this.iter_points_between(p1, p2, (f)=>{
+            f.dbf_properties.SectionID = id; 
+        });
+        this.modified = true;
+    }
+
+    private iter_points_between(p1: DbfFeature, p2: DbfFeature, func: (f: DbfFeature)=>void){
+        if(p1 && p2 && p1.dbf_properties.Route == p2.dbf_properties.Route){
+            const min_fis = Math.min(p1.dbf_properties.FIS_Count, p2.dbf_properties.FIS_Count);
+            const max_fis = Math.max(p1.dbf_properties.FIS_Count, p2.dbf_properties.FIS_Count);
+            this.features.filter(f=>
+                (f.dbf_properties.Route == p1.dbf_properties.Route) &&
+                (f.dbf_properties.FIS_Count >= min_fis && f.dbf_properties.FIS_Count <= max_fis)
+            ).forEach(func);
+        }
+    }
+
+    clear_highlighted(){
+        this.highlighted.forEach(h=>h.setStyle([this.base_style(h), this.text_style(h, this.visible_props)]));
+        this.highlighted = [];
+    }
+
+    highlight_point_selection(p1: DbfFeature, p2: DbfFeature){
+        if((p1 && (p1.parent_shapefile != this)) || (p2 && (p2.parent_shapefile != this))){
+            throw new Error("Highlight of points that don't belong to current shapefile");
+        }
+
+        
+        this.clear_highlighted();
+
+        p1?.setStyle([this.highlight_style(p1), this.text_style(p1, this.visible_props)]);
+        p2?.setStyle([this.highlight_style(p2), this.text_style(p2, this.visible_props)]);
+        
+        if(p1) this.highlighted.push(p1);
+        if(p2) this.highlighted.push(p2);
+
+        this.iter_points_between(p1, p2, (f)=>{
+            f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)]);
+            this.highlighted.push(f);
+        });
+    }
+
+    highlight_section(section: DbfFeature){
+        if(section && (section.parent_shapefile != this)){
+            throw new Error("Highlight of section that doesn't belong to current shapefile");
+        }
+
+        this.clear_highlighted();
+        this.highlighted.push(section);
+
+        section.setStyle([this.highlight_style(section), this.text_style(section, this.visible_props)]);
+    }
+
+    async save() {
+        if(this.modified){
+            const dat = dbf.structure(this.features.map(f=>f.dbf_properties));
+            const writeable = await this.dbf_file.createWritable();
+            writeable.write(dat);
+            await writeable.close();
+            return true;
+        }
     }
 }

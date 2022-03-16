@@ -7,8 +7,9 @@ import { LitElement, html, css } from "lit";
 import { SelectionElement } from "./ui/SelectorArray";
 import { ActionButtons } from "./ui/ActionButtons";
 import { get_folder } from "./FileHandling";
-import { load_shapefiles, Shapefile } from "./Shapefile";
+import { DbfFeature, load_shapefiles, Shapefile } from "./Shapefile";
 import { ShapefileList } from "./ui/ShapefileList";
+import { PointSelector } from "./ui/PointSelector";
 
 @customElement("my-app")
 export class App extends LitElement{
@@ -18,7 +19,7 @@ export class App extends LitElement{
             height: 100%;
             background-color: lightblue;
             display: grid;
-            grid-template-rows: 1fr 10fr;
+            grid-template-rows: 1fr 1fr 10fr;
             max-height: 100vh;
         }
 
@@ -29,7 +30,9 @@ export class App extends LitElement{
 
     map : Map;
     shapefile_selector: ShapefileList;
+    point_selector: PointSelector;
     action_buttons: ActionButtons;
+    shapefiles: Shapefile[] = [];
     constructor(){
         super();
         this.map = new Map({
@@ -45,6 +48,15 @@ export class App extends LitElement{
                 zoom: 1
             })
         });
+        this.map.on("click", evt=>{
+            this.map.forEachFeatureAtPixel(evt.pixel, (feat, layer)=>{
+                if(feat.getGeometry().getType() == "Point"){
+                    this.point_selector.point_selected(feat as DbfFeature);
+                } else {
+                    this.point_selector.section_selected(feat as DbfFeature);
+                }
+            });
+        })
         this.shapefile_selector = new ShapefileList();
         this.shapefile_selector.addEventListener("shapefile-prop-update", (evt: CustomEvent)=>{
             this.update_visible_props(evt.detail.shapefile, evt.detail.new_props);
@@ -56,7 +68,26 @@ export class App extends LitElement{
             this.set_layer_visible(evt.detail.shapefile, evt.detail.visible);
         });
         this.action_buttons = new ActionButtons();
-        this.action_buttons.on_load_shapefiles = ()=>this.load_shapefiles();
+        this.point_selector = new PointSelector();
+        this.point_selector.addEventListener("selection-update", (evt: CustomEvent)=>{
+
+            const pt = this.point_selector.start_point || this.point_selector.end_point;
+            pt?.parent_shapefile.highlight_point_selection(this.point_selector.start_point, this.point_selector.end_point);
+
+            this.point_selector.section?.parent_shapefile.highlight_section(this.point_selector.section);
+        });
+
+        this.point_selector.addEventListener("associate-points", (evt: CustomEvent)=>{
+            this.point_selector.start_point.parent_shapefile.associate_points(this.point_selector.start_point, this.point_selector.end_point, this.point_selector.section);
+            this.point_selector.start_point.parent_shapefile.clear_highlighted();
+            this.point_selector.section.parent_shapefile.clear_highlighted();
+        });
+
+        this.action_buttons.addEventListener("load-shapefiles", ()=>this.load_shapefiles());
+        this.action_buttons.addEventListener("save-changes", ()=>{
+            this.shapefiles.forEach(shp=>shp.save());
+        });
+
     }
 
     private set_layer_visible(shape: Shapefile, visible: boolean){
@@ -72,10 +103,9 @@ export class App extends LitElement{
     }
 
     private add_shapefile(shape: Shapefile){
-
         this.shapefile_selector.add_shapefile(shape);
         this.map.addLayer(shape.layer);
-        // this.shapefile_selector.add_shapefile(shape);
+        this.shapefiles.push(shape);
     }
 
     private async load_shapefiles(){
@@ -97,7 +127,8 @@ export class App extends LitElement{
         return html`
         <div id="sidebar">
             <div style="grid-row: 1;">${this.action_buttons}</div>
-            <div style="grid-row: 2; overflow-y: scroll;">${this.shapefile_selector}</div>
+            <div style="grid-row: 2;">${this.point_selector}</div>
+            <div style="grid-row: 3; overflow-y: scroll;">${this.shapefile_selector}</div>
         </div>`
     }
 }
