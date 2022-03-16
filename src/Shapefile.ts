@@ -10,6 +10,7 @@ import Stroke from "ol/style/Stroke";
 import Fill from "ol/style/Fill";
 import VectorSource from "ol/source/Vector";
 import VectorImageLayer from "ol/layer/VectorImage";
+import { Color } from "ol/color";
 const dbf: { structure: (data: any[], meta?: any[])=> ArrayBuffer} = require("./dbf/index");
 
 /**
@@ -123,8 +124,75 @@ export async function load_shapefiles(dest_projection: string, folder: FileSyste
     }));
 }
 
+function most_frequent(strs: string[]): string {
+    let count = new Map<string, number>();
+    strs.forEach(s=>count.set(s, (count.get(s) || 0) + 1));
+    let max = 0;
+    count.forEach((v,_)=>{
+        max = Math.max(max, v);
+    });
+
+    for(let [key, value] of count){
+        if(value == max) return key;
+    }
+}
+
+export function identify_section_associations(point_file: Shapefile, sections_file: Shapefile){
+    const point_runs = new Map<String, DbfFeature[]>();
+    const rolling_width = 10;
+    point_file.features.forEach(f=>{
+        let route = point_runs.get(f.dbf_properties.Route);
+        if(!route) {
+            point_runs.set(f.dbf_properties.Route, []);
+            route = point_runs.get(f.dbf_properties.Route);
+        }
+
+        route.push(f);
+    });
+
+    point_runs.forEach((run, route)=>{
+        const nearest = run.map(f=>{
+            if(f.dbf_properties.SectionID) return "";
+            const nearest = <DbfFeature>sections_file.vector_source.getClosestFeatureToCoordinate((f.getGeometry() as Point).getFlatCoordinates());
+            return nearest.dbf_properties.UniqueID;
+        });
+
+        let rolling_average = nearest.slice(0, rolling_width);
+
+        for(let i = 0; i < rolling_width / 2; i++){
+            if(!run[i].dbf_properties.SectionID){
+                const most_freq = most_frequent(rolling_average);
+
+                //only set the tails if they are part of the larger nearby section
+                if(nearest[i] == most_freq){
+                    run[i].dbf_properties.SectionID = most_freq;
+                }
+            }
+        }
+
+        for(let i = rolling_width / 2; i < run.length - rolling_width/2; i++){
+            rolling_average.splice(0,1);
+            rolling_average.push(nearest[i + rolling_width/2]);
+            if(!run[i].dbf_properties.SectionID){
+                run[i].dbf_properties.SectionID = most_frequent(rolling_average);
+            }
+        }
+
+        for(let i = run.length - rolling_width/2; i < run.length; i++){
+            const most_freq = most_frequent(rolling_average);
+
+                //only set the tails if they are part of the larger nearby section
+                if(nearest[i] == most_freq){
+                    run[i].dbf_properties.SectionID = most_freq;
+                }
+        }
+    })
+    point_file.restyle_all();
+}
+
 export class Shapefile {
     layer: VectorImageLayer<VectorSource>;
+    vector_source: VectorSource;
     private visible_props: string[] = [];
     routes?: {available: string[], visible: string[]};
     private line_width: number;
@@ -134,12 +202,12 @@ export class Shapefile {
         features.forEach(f=>f.parent_shapefile=this);
         this.line_width = 2;
         this.set_visible_props([]);
-        const vector_source = new VectorSource({
+        this.vector_source = new VectorSource({
             features: this.features,
         })
 
         this.layer = new VectorImageLayer({
-            source: vector_source,
+            source: this.vector_source,
         })
 
         if(props.indexOf("Route") != -1) {
@@ -204,6 +272,17 @@ export class Shapefile {
         }
     }
 
+    static section_color_map: Map<string, Color> = new Map();
+
+    private color_of_section(sectionid: string){
+        const existing = Shapefile.section_color_map.get(sectionid);
+        if(existing) return existing;
+
+        const new_color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
+        Shapefile.section_color_map.set(sectionid, new_color);
+        return new_color;
+    }
+
     private base_style(feature: DbfFeature): Style {
         const geo = feature.getGeometry();
         if(geo.getType() == "Point"){
@@ -213,7 +292,7 @@ export class Shapefile {
                 return new Style({
                     stroke: new Stroke({
                         width: this.line_width,
-                        color: 'gray'
+                        color: this.color_of_section(feature.dbf_properties.SectionID)
                     }),
                     fill: new Fill({
                         color: "gray"
@@ -221,7 +300,7 @@ export class Shapefile {
                     geometry: new Circle(pt, 2)
                 })
             } else {
-            return new Style({
+                return new Style({
                     stroke: new Stroke({
                         width: this.line_width,
                         color: 'blue'
@@ -236,7 +315,7 @@ export class Shapefile {
             return new Style({
                 stroke: new Stroke({
                     width: this.line_width,
-                    color: 'green'
+                    color: this.color_of_section(feature.dbf_properties.UniqueID)
                 })
             })
         }

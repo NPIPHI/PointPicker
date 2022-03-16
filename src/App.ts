@@ -7,7 +7,7 @@ import { LitElement, html, css } from "lit";
 import { SelectionElement } from "./ui/SelectorArray";
 import { ActionButtons } from "./ui/ActionButtons";
 import { get_folder } from "./FileHandling";
-import { DbfFeature, load_shapefiles, Shapefile } from "./Shapefile";
+import { DbfFeature, identify_section_associations, load_shapefiles, Shapefile } from "./Shapefile";
 import { ShapefileList } from "./ui/ShapefileList";
 import { PointSelector } from "./ui/PointSelector";
 
@@ -87,6 +87,14 @@ export class App extends LitElement{
         this.action_buttons.addEventListener("save-changes", ()=>{
             this.shapefiles.forEach(shp=>shp.save());
         });
+        this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
+            const {points, sections} = e.detail;
+            if(points && sections){
+                identify_section_associations(points, sections);
+            } else {
+                alert("Point and section shapefiles not loaded");
+            }
+        })
 
     }
 
@@ -113,8 +121,15 @@ export class App extends LitElement{
         const shapefiles = await load_shapefiles("EPSG:3857", folder);
         const center = shapefiles[0]?.features[0]?.getGeometry().getClosestPoint([0, 0]) || [0, 0];
 
-        shapefiles.forEach((s)=>this.add_shapefile(s));
-        
+        shapefiles.forEach((s)=>{
+            this.add_shapefile(s);
+            if(s.routes){
+                this.action_buttons.points_shapefile = s;
+            } else {
+                this.action_buttons.sections_shapefile = s;
+            }
+        });    
+
         this.map.setView(new View({
             center: center,
             zoom: 10
