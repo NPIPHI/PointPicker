@@ -123,8 +123,15 @@ export class ShapefileList extends LitElement {
         this.dispatchEvent(new CustomEvent("shapefile-visible-update", {detail: {shapefile: shp, visible: visible}}));
     }
 
+    static styles = css`
+        .container {
+            border: 1px solid black;
+        }
+    `
+
     render() {
         return html`
+        <div class="container">
             ${this.shapefile_lists.map(shp=>{
                 if(shp.routes){
                     return html`
@@ -147,6 +154,7 @@ export class ShapefileList extends LitElement {
                         </shapefile-toggle>
                         `
             }})}
+        </div>
         `
     }
 }

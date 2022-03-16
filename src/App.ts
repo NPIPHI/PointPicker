@@ -7,9 +7,11 @@ import { LitElement, html, css } from "lit";
 import { SelectionElement } from "./ui/SelectorArray";
 import { ActionButtons } from "./ui/ActionButtons";
 import { get_folder } from "./FileHandling";
-import { DbfFeature, identify_section_associations, load_shapefiles, Shapefile } from "./Shapefile";
+import { DbfFeature, load_shapefiles, Shapefile } from "./Shapefile";
 import { ShapefileList } from "./ui/ShapefileList";
 import { PointSelector } from "./ui/PointSelector";
+import { PointFixerArray } from "./ui/PointFixerArray";
+import { Point } from "ol/geom";
 
 @customElement("my-app")
 export class App extends LitElement{
@@ -20,6 +22,7 @@ export class App extends LitElement{
             background-color: lightblue;
             display: grid;
             grid-template-rows: 1fr 1fr 10fr;
+            grid-template-columns: 1fr 1fr;
             max-height: 100vh;
         }
 
@@ -32,6 +35,7 @@ export class App extends LitElement{
     shapefile_selector: ShapefileList;
     point_selector: PointSelector;
     action_buttons: ActionButtons;
+    point_fixer_array: PointFixerArray;
     shapefiles: Shapefile[] = [];
     constructor(){
         super();
@@ -90,12 +94,29 @@ export class App extends LitElement{
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
             const {points, sections} = e.detail;
             if(points && sections){
-                points.identify_section_associations(sections);
+                const bad_points = points.identify_section_associations(sections);
+                this.point_fixer_array.bad_points = bad_points;
             } else {
                 alert("Point and section shapefiles not loaded");
             }
+        });
+
+        this.point_fixer_array = new PointFixerArray();
+        this.point_fixer_array.addEventListener("delete-points", (evt: CustomEvent)=>{
+            const pts : DbfFeature[] = evt.detail;
+            pts[0].parent_shapefile.set_deleted(pts);
         })
 
+        this.point_fixer_array.addEventListener("focus-points", (evt: CustomEvent)=>{
+            const pts : DbfFeature[] = evt.detail;
+            const center = (pts[0].getGeometry() as Point).getFlatCoordinates();
+            this.map.setView(
+                new View({
+                    center: center,
+                    zoom: 20
+                })
+            )
+        })
     }
 
     private set_layer_visible(shape: Shapefile, visible: boolean){
@@ -141,9 +162,12 @@ export class App extends LitElement{
     render(){
         return html`
         <div id="sidebar">
-            <div style="grid-row: 1;">${this.action_buttons}</div>
-            <div style="grid-row: 2;">${this.point_selector}</div>
-            <div style="grid-row: 3; overflow-y: scroll;">${this.shapefile_selector}</div>
+            <div style="grid-row: 1; grid-column: 1;">
+                ${this.action_buttons}
+                ${this.point_selector}
+            </div>
+            <div style="grid-row: 3; grid-column: 1 / 3; overflow-y: scroll;">${this.shapefile_selector}</div>
+            <div style="grid-row: 1; grid-column: 2;">${this.point_fixer_array}</div>
         </div>`
     }
 }

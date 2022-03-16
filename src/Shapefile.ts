@@ -174,7 +174,7 @@ export class Shapefile {
         }
     }
     
-    identify_section_associations(sections_file: Shapefile){
+    identify_section_associations(sections_file: Shapefile): DbfFeature[][]{
         const point_runs = new Map<String, DbfFeature[]>();
         const rolling_width = 10;
         this.features.forEach(f=>{
@@ -186,6 +186,8 @@ export class Shapefile {
     
             route.push(f);
         });
+
+        let bad_points: DbfFeature[][] = []
     
         point_runs.forEach((run, route)=>{
             const nearest = run.map(f=>{
@@ -196,6 +198,7 @@ export class Shapefile {
     
             let rolling_average = nearest.slice(0, rolling_width);
     
+            let bad_start = [];
             for(let i = 0; i < rolling_width / 2; i++){
                 if(!run[i].dbf_properties.SectionID){
                     const most_freq = this.most_frequent(rolling_average);
@@ -203,6 +206,8 @@ export class Shapefile {
                     //only set the tails if they are part of the larger nearby section
                     if(nearest[i] == most_freq){
                         run[i].dbf_properties.SectionID = most_freq;
+                    } else {
+                        bad_start.push(run[i]);
                     }
                 }
             }
@@ -214,18 +219,31 @@ export class Shapefile {
                     run[i].dbf_properties.SectionID = this.most_frequent(rolling_average);
                 }
             }
-    
+            
+            let bad_end = [];
             for(let i = run.length - rolling_width/2; i < run.length; i++){
                 const most_freq = this.most_frequent(rolling_average);
     
-                    //only set the tails if they are part of the larger nearby section
-                    if(nearest[i] == most_freq){
-                        run[i].dbf_properties.SectionID = most_freq;
-                    }
+                //only set the tails if they are part of the larger nearby section
+                if(nearest[i] == most_freq){
+                    run[i].dbf_properties.SectionID = most_freq;
+                } else {
+                    bad_end.push(run[i]);
+                }
+            }
+
+            if(bad_start.length > 0){
+                bad_points.push(bad_start);
+            }
+
+            if(bad_end.length > 0){
+                bad_points.push(bad_end);
             }
         })
         this.modified = true;
         this.restyle_all();
+
+        return bad_points;
     }
     
     private text_of(feature: DbfFeature, visible_props: string[]){
@@ -289,17 +307,30 @@ export class Shapefile {
         if(geo.getType() == "Point"){
             const pt = (geo as Point).getFlatCoordinates();
 
-            if(feature.dbf_properties.SectionID){  
-                return new Style({
-                    stroke: new Stroke({
-                        width: this.line_width,
-                        color: this.color_of_section(feature.dbf_properties.SectionID)
-                    }),
-                    fill: new Fill({
-                        color: "gray"
-                    }),
-                    geometry: new Circle(pt, 2)
-                })
+            if(feature.dbf_properties.SectionID){ 
+                if(feature.dbf_properties.SectionID == "Deleted"){
+                    return new Style({
+                        stroke: new Stroke({
+                            width: this.line_width,
+                            color: "black"
+                        }),
+                        fill: new Fill({
+                            color: "gray"
+                        }),
+                        geometry: new Circle(pt, 1)
+                    })
+                } else {
+                    return new Style({
+                        stroke: new Stroke({
+                            width: this.line_width,
+                            color: this.color_of_section(feature.dbf_properties.SectionID)
+                        }),
+                        fill: new Fill({
+                            color: "gray"
+                        }),
+                        geometry: new Circle(pt, 2)
+                    })
+                } 
             } else {
                 return new Style({
                     stroke: new Stroke({
@@ -365,6 +396,14 @@ export class Shapefile {
     set_line_width(width: number){
         this.line_width = width;
         this.restyle_all();
+    }
+
+    set_deleted(pts: DbfFeature[]){
+        pts.forEach(p=>{
+            p.dbf_properties.SectionID = "Deleted";
+            p.setStyle([this.base_style(p), this.text_style(p, this.visible_props)])
+        });
+        this.modified = true;
     }
 
     associate_points(p1: DbfFeature, p2: DbfFeature, section: DbfFeature){
