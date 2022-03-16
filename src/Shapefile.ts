@@ -402,6 +402,7 @@ export class Shapefile {
     set_deleted(pts: DbfFeature[]){
         pts.forEach(p=>{
             p.dbf_properties.SectionID = "Deleted";
+            p.is_start_stop = false;
             p.setStyle([this.base_style(p), this.text_style(p, this.visible_props)])
         });
         this.modified = true;
