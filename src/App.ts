@@ -90,7 +90,7 @@ export class App extends LitElement{
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
             const {points, sections} = e.detail;
             if(points && sections){
-                identify_section_associations(points, sections);
+                points.identify_section_associations(sections);
             } else {
                 alert("Point and section shapefiles not loaded");
             }

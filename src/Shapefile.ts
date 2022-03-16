@@ -124,71 +124,6 @@ export async function load_shapefiles(dest_projection: string, folder: FileSyste
     }));
 }
 
-function most_frequent(strs: string[]): string {
-    let count = new Map<string, number>();
-    strs.forEach(s=>count.set(s, (count.get(s) || 0) + 1));
-    let max = 0;
-    count.forEach((v,_)=>{
-        max = Math.max(max, v);
-    });
-
-    for(let [key, value] of count){
-        if(value == max) return key;
-    }
-}
-
-export function identify_section_associations(point_file: Shapefile, sections_file: Shapefile){
-    const point_runs = new Map<String, DbfFeature[]>();
-    const rolling_width = 10;
-    point_file.features.forEach(f=>{
-        let route = point_runs.get(f.dbf_properties.Route);
-        if(!route) {
-            point_runs.set(f.dbf_properties.Route, []);
-            route = point_runs.get(f.dbf_properties.Route);
-        }
-
-        route.push(f);
-    });
-
-    point_runs.forEach((run, route)=>{
-        const nearest = run.map(f=>{
-            if(f.dbf_properties.SectionID) return "";
-            const nearest = <DbfFeature>sections_file.vector_source.getClosestFeatureToCoordinate((f.getGeometry() as Point).getFlatCoordinates());
-            return nearest.dbf_properties.UniqueID;
-        });
-
-        let rolling_average = nearest.slice(0, rolling_width);
-
-        for(let i = 0; i < rolling_width / 2; i++){
-            if(!run[i].dbf_properties.SectionID){
-                const most_freq = most_frequent(rolling_average);
-
-                //only set the tails if they are part of the larger nearby section
-                if(nearest[i] == most_freq){
-                    run[i].dbf_properties.SectionID = most_freq;
-                }
-            }
-        }
-
-        for(let i = rolling_width / 2; i < run.length - rolling_width/2; i++){
-            rolling_average.splice(0,1);
-            rolling_average.push(nearest[i + rolling_width/2]);
-            if(!run[i].dbf_properties.SectionID){
-                run[i].dbf_properties.SectionID = most_frequent(rolling_average);
-            }
-        }
-
-        for(let i = run.length - rolling_width/2; i < run.length; i++){
-            const most_freq = most_frequent(rolling_average);
-
-                //only set the tails if they are part of the larger nearby section
-                if(nearest[i] == most_freq){
-                    run[i].dbf_properties.SectionID = most_freq;
-                }
-        }
-    })
-    point_file.restyle_all();
-}
 
 export class Shapefile {
     layer: VectorImageLayer<VectorSource>;
@@ -225,6 +160,72 @@ export class Shapefile {
         } else {
             this.routes = null;
         }
+    }
+    private most_frequent(strs: string[]): string {
+        let count = new Map<string, number>();
+        strs.forEach(s=>count.set(s, (count.get(s) || 0) + 1));
+        let max = 0;
+        count.forEach((v,_)=>{
+            max = Math.max(max, v);
+        });
+    
+        for(let [key, value] of count){
+            if(value == max) return key;
+        }
+    }
+    
+    identify_section_associations(sections_file: Shapefile){
+        const point_runs = new Map<String, DbfFeature[]>();
+        const rolling_width = 10;
+        this.features.forEach(f=>{
+            let route = point_runs.get(f.dbf_properties.Route);
+            if(!route) {
+                point_runs.set(f.dbf_properties.Route, []);
+                route = point_runs.get(f.dbf_properties.Route);
+            }
+    
+            route.push(f);
+        });
+    
+        point_runs.forEach((run, route)=>{
+            const nearest = run.map(f=>{
+                if(f.dbf_properties.SectionID) return "";
+                const nearest = <DbfFeature>sections_file.vector_source.getClosestFeatureToCoordinate((f.getGeometry() as Point).getFlatCoordinates());
+                return nearest.dbf_properties.UniqueID;
+            });
+    
+            let rolling_average = nearest.slice(0, rolling_width);
+    
+            for(let i = 0; i < rolling_width / 2; i++){
+                if(!run[i].dbf_properties.SectionID){
+                    const most_freq = this.most_frequent(rolling_average);
+    
+                    //only set the tails if they are part of the larger nearby section
+                    if(nearest[i] == most_freq){
+                        run[i].dbf_properties.SectionID = most_freq;
+                    }
+                }
+            }
+    
+            for(let i = rolling_width / 2; i < run.length - rolling_width/2; i++){
+                rolling_average.splice(0,1);
+                rolling_average.push(nearest[i + rolling_width/2]);
+                if(!run[i].dbf_properties.SectionID){
+                    run[i].dbf_properties.SectionID = this.most_frequent(rolling_average);
+                }
+            }
+    
+            for(let i = run.length - rolling_width/2; i < run.length; i++){
+                const most_freq = this.most_frequent(rolling_average);
+    
+                    //only set the tails if they are part of the larger nearby section
+                    if(nearest[i] == most_freq){
+                        run[i].dbf_properties.SectionID = most_freq;
+                    }
+            }
+        })
+        this.modified = true;
+        this.restyle_all();
     }
     
     private text_of(feature: DbfFeature, visible_props: string[]){
