@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Photo Locator</title>
+    <title>Point Picker</title>
     <style>
         body {
             color: gray;
@@ -13,85 +13,15 @@
             overflow: hidden;
             height: 100vh;
             width: 100vw;
-        }
-
-        #map {
-            width: 100%;
-            height: 100%;
-            grid-column: 1;
-            grid-row: 2;
-        }
-
-        .controls {
-            grid-column: 1/3;
-            grid-row: 1;
-            background-color: lightblue;
-            border-color: black;
-            border-style: solid;
-        }
-
-        #name_selector {
-            background-color: lightblue;
-            grid-column: 2;
-            border-color: black;
-            border-style: solid;
-            height: 100%;
-            grid-row: 2;
-        }
-
-        button {
-            padding: 5px;
-            margin: 5px;
-        }
-
-        .main_body {
-            padding: 0;
-            margin: 0;
             display: grid;
-            grid-template-columns: 5fr 1fr;
-            grid-template-rows: 1fr 20fr;
-            height: 100%;
-            width: 100%;
-        }
-
-        #prop_selector_table {
-            overflow-y: scroll;
-            max-height: 50vh;
-            color: black;
-        }
-
-        #shape_selector_table {
-            overflow-y: scroll;
-            max-height: 50vh;
-            color: black;
-        }
-
-        .display_selector {
-            display: flex;
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: 1fr;
         }
     </style>
 </head>
-<body> 
-    <div class="main_body">
-        <div class="controls">
-            <button id="images_button">Open Images</button>
-            <button id="shape_button">Open Shape</button>
-            <button id="save_button">Save Modifications</button>
-            <button id="toggle_button">Toggle Thumbnail</button>
-        </div>
-        <div id="map"></div>
-        <div id="name_selector">
-            <div>
-                Shapefiles
-                <div id="shape_selector_table"></div>
-            </div>
-            <div>
-                Properties
-                <div id="prop_selector_table"></div>
-            </div>
-        </div>
-    </div>
-    
+<body>
     <script src="bundle.js"></script>
+    <div id="map" style="grid-column: 1;"></div>
+    <div id="app" style="grid-column: 2"></div>
 </body>
 </html>

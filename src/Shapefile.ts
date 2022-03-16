@@ -1,9 +1,15 @@
 import GeoJSON from "ol/format/GeoJSON";
 import { Feature } from "ol";
-import { Geometry } from "ol/geom";
+import { Circle, Geometry, Point } from "ol/geom";
 import proj4 from "proj4";
 import * as shapefile from "shapefile"
 import { extension_of } from "./FileHandling";
+import Style from "ol/style/Style";
+import Text from "ol/style/Text";
+import Stroke from "ol/style/Stroke";
+import Fill from "ol/style/Fill";
+import VectorSource from "ol/source/Vector";
+import VectorImageLayer from "ol/layer/VectorImage";
 
 /**
  * Loads a projection from a .prj file
@@ -30,7 +36,7 @@ export type DbfFeature = Feature<Geometry> & { dbf_properties?: any }
  * @param folder Folder containing the .shp, .prj and .dbf files
  * @returns an array of features from the shapefiles and an array of available properites on those features
  */
-async function load_shapefile(filename: string, dest_projection: string, folder: FileSystemHandle[]): Promise<{ features: DbfFeature[], dbf_props: string[] }> {
+async function load_shapefile(filename: string, dest_projection: string, folder: FileSystemHandle[]): Promise<Shapefile> {
     const proj_file = <FileSystemFileHandle>folder.find(f => f.name == `${filename}.prj`);
     const shape_file = <FileSystemFileHandle>folder.find(f => f.name == `${filename}.shp`);
     const dbf_file = <FileSystemFileHandle>folder.find(f => f.name == `${filename}.dbf`);
@@ -62,7 +68,7 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
         if (f.bbox) f.bbox = null;
         if (f.geometry.type == "Point") {
             f.geometry.coordinates = projection.forward(f.geometry.coordinates);
-        } else if (f.geometry.type == "Polygon") {
+        } else if (f.geometry.type == "Polygon" || f.geometry.type == "MultiLineString") {
             for (let i = 0; i < f.geometry.coordinates.length; i++) {
                 for (let j = 0; j < f.geometry.coordinates[i].length; j++) {
                     f.geometry.coordinates[i][j] = projection.forward(f.geometry.coordinates[i][j])
@@ -93,7 +99,7 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
 
     const dbf_props = Object.keys(shapes.features[0]?.properties);
 
-    return { features: geo_json, dbf_props: dbf_props };
+    return new Shapefile(filename, geo_json, dbf_props);
 }
 
 /**
@@ -102,7 +108,7 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
  * @param folder folder to load shapefiles from
  * @returns array of shapefiles and array of available properites
  */
-export async function load_shapefiles(dest_projection: string, folder: FileSystemHandle[]): Promise<{ shapefiles: { name: string, features: DbfFeature[] }[], props: string[] }> {
+export async function load_shapefiles(dest_projection: string, folder: FileSystemHandle[]): Promise<Shapefile[]> {
     const shape_file_names = folder.filter(f => {
         if (f instanceof FileSystemFileHandle) {
             return extension_of(f) == "shp";
@@ -111,20 +117,122 @@ export async function load_shapefiles(dest_projection: string, folder: FileSyste
         }
     }).map(f => f.name.slice(0, f.name.length - ".shp".length));
 
-    let props: string[] = [];
-    let shapefiles: {
-        name: string;
-        features: DbfFeature[];
-    }[] = [];
+    return Promise.all(shape_file_names.map(name=>{
+        return load_shapefile(name, dest_projection, folder);
+    }));
+}
 
-    for (const name of shape_file_names) {
-        const shapes = await load_shapefile(name, dest_projection, folder);
-        shapefiles.push({ features: shapes.features, name: name });
-        shapes.dbf_props.forEach(p => {
-            if (props.indexOf(p) == -1) props.push(p);
-        });
+export class Shapefile {
+    layer: VectorImageLayer<VectorSource>;
+    private visible_props: string[] = [];
+    routes?: {available: string[], visible: string[]};
+    private line_width: number;
+    constructor(public name : string, public features: DbfFeature[], public props: string[]){
+        this.line_width = 1;
+        this.set_visible_props([]);
+        const vector_source = new VectorSource({
+            features: this.features,
+        })
 
+        this.layer = new VectorImageLayer({
+            source: vector_source,
+        })
+
+        if(props.indexOf("Route") != -1) {
+            let routes = new Set<string>();
+            features.forEach(f=>{
+                if(f.dbf_properties.Route){
+                    routes.add(f.dbf_properties.Route);
+                }
+            })
+
+            this.routes = {
+                available: Array.from(routes),
+                visible: Array.from(routes)
+            }
+        } else {
+            this.routes = null;
+        }
+    }
+    
+    private text_of(feature: DbfFeature, visible_props: string[]){
+        let text = visible_props.map(name => {
+            const val = feature.dbf_properties[name];
+            if (val === undefined || val === null) {
+                return `[MISSING ${name}]`;
+            } else {
+                return val;
+            }
+        }).join('\n');
+
+        return text;
     }
 
-    return { shapefiles: shapefiles, props: props };
+    protected text_style(feature: DbfFeature, props: string[]){
+        return new Style({
+            text: new Text({
+                text: this.text_of(feature, props)
+            })
+        })
+    }
+
+    protected base_style(feature: DbfFeature): Style {
+        const geo = feature.getGeometry();
+        if(geo.getType() == "Point"){
+            const pt = (geo as Point).getFlatCoordinates();
+            return new Style({
+                stroke: new Stroke({
+                    width: this.line_width,
+                    color: 'blue'
+                }),
+                fill: new Fill({
+                    color: "lightblue"
+                }),
+                geometry: new Circle(pt, 3)
+            })
+        } else {
+            return new Style({
+                stroke: new Stroke({
+                    width: this.line_width,
+                    color: 'green'
+                })
+            })
+        }
+    }
+
+    restyle_all(){
+        if(this.routes){
+            let route_set = new Set(this.routes.visible);
+            this.features.forEach(f=>{
+                if(route_set.has(f.dbf_properties.Route)){
+                    f.setStyle([this.base_style(f), this.text_style(f, this.visible_props)])
+                } else {
+                    f.setStyle(new Style());
+                }
+            })
+        } else {
+            this.features.forEach(f=>{
+                f.setStyle([this.base_style(f), this.text_style(f, this.visible_props)])
+            })
+        }
+    }
+
+    set_visible_props(props: string[]){
+        this.visible_props = props;
+        this.restyle_all();
+    }
+
+    set_visible(visible: boolean){
+        this.layer.setVisible(visible);
+    }
+
+    set_visible_routes(routes: string[]){
+        this.routes.visible = routes;
+        this.restyle_all();
+    }
+
+    set_line_width(width: number){
+        this.line_width = width;
+        this.restyle_all();
+    }
 }
