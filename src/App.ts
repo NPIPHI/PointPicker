@@ -53,13 +53,7 @@ export class App extends LitElement{
             })
         });
         this.map.on("click", evt=>{
-            this.map.forEachFeatureAtPixel(evt.pixel, (feat, layer)=>{
-                if(feat.getGeometry().getType() == "Point"){
-                    this.point_selector.point_selected(feat as DbfFeature);
-                } else {
-                    this.point_selector.section_selected(feat as DbfFeature);
-                }
-            });
+            this.point_selector.map_click(this.map.getFeaturesAtPixel(evt.pixel) as DbfFeature[]);
         })
         this.shapefile_selector = new ShapefileList();
         this.shapefile_selector.addEventListener("shapefile-prop-update", (evt: CustomEvent)=>{
@@ -74,17 +68,25 @@ export class App extends LitElement{
         this.action_buttons = new ActionButtons();
         this.point_selector = new PointSelector();
         this.point_selector.addEventListener("selection-update", (evt: CustomEvent)=>{
+            const {point_shp, section_shp, start_point, end_point, section} = evt.detail;
+            point_shp?.clear_highlighted();
+            point_shp?.highlight_point_selection(start_point, end_point);
 
-            const pt = this.point_selector.start_point || this.point_selector.end_point;
-            pt?.parent_shapefile.highlight_point_selection(this.point_selector.start_point, this.point_selector.end_point);
-
-            this.point_selector.section?.parent_shapefile.highlight_section(this.point_selector.section);
+            section_shp?.clear_highlighted();
+            section_shp?.highlight_section(section);
         });
 
         this.point_selector.addEventListener("associate-points", (evt: CustomEvent)=>{
-            this.point_selector.start_point.parent_shapefile.associate_points(this.point_selector.start_point, this.point_selector.end_point, this.point_selector.section);
-            this.point_selector.start_point.parent_shapefile.clear_highlighted();
-            this.point_selector.section.parent_shapefile.clear_highlighted();
+            const {start_point, end_point, section, point_shp, section_shp} = evt.detail;
+            point_shp.associate_points(start_point, end_point, section);
+            point_shp.clear_highlighted();
+            section_shp.clear_highlighted();
+        });
+
+        this.point_selector.addEventListener("delete-points", (evt: CustomEvent)=>{
+            const {start_point, end_point, point_shp} = evt.detail;
+            point_shp.set_deleted(point_shp.points_between(start_point, end_point));
+            point_shp.clear_highlighted();
         });
 
         this.action_buttons.addEventListener("load-shapefiles", ()=>this.load_shapefiles());

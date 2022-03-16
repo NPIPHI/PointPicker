@@ -30,6 +30,7 @@ export class PointFixerArray extends LitElement {
     render() {
         return html`
         <div class="container">
+            <div>Unresolved Points<br></div>
             ${this.bad_points.map(p=>
                 html`<div>
                     ${p[0].dbf_properties.Route}

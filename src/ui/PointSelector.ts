@@ -1,6 +1,6 @@
 import { css, html, LitElement } from "lit"
 import {customElement, property} from "lit/decorators.js"
-import { DbfFeature } from "../Shapefile";
+import { DbfFeature, Shapefile } from "../Shapefile";
 
 
 @customElement("point-selector")
@@ -9,8 +9,17 @@ export class PointSelector extends LitElement {
         .grayed {
             opacity: 0.3;
         }
-    `
 
+        .container {
+            border: 1px solid black;
+        }
+
+        .next-action {
+            color: black;
+        }
+    `
+    point_shapefile: Shapefile;
+    section_shapefile: Shapefile;
     @property()
     start_point: DbfFeature = null;
     @property()
@@ -19,43 +28,42 @@ export class PointSelector extends LitElement {
     section: DbfFeature = null;
     @property()
     error: string = "";
-    @property()
-    next_receiver: SinglePointSelector | SectionSelector;
 
-    point_selected(point: DbfFeature){
-        if(this.next_receiver && this.next_receiver instanceof SinglePointSelector){
-            if(this.next_receiver.name == "Start"){
+    map_click(features: DbfFeature[]){
+        const section = features.find(f=>f.getGeometry().getType() != "Point");
+        const point = features.find(f=>f.getGeometry().getType() == "Point");
+
+        if(section){
+            this.section_shapefile = section.parent_shapefile;
+            this.section = section;
+        } else if(point){
+            this.point_shapefile = point.parent_shapefile;
+            if(!this.start_point){
                 this.start_point = point;
-                this.dispatch_selection_update();
-            }
-            if(this.next_receiver.name == "End"){
+            } else {
                 this.end_point = point;
-                this.dispatch_selection_update();
             }
+        } else {
+            this.reset_state();
         }
+        
+        this.dispatch_selection_update();
     }
 
-    section_selected(section: DbfFeature){
-        if(this.next_receiver && this.next_receiver instanceof SectionSelector){
-            this.section = section;
-            this.dispatch_selection_update();
-        }
+    private reset_state(){
+        this.end_point = null;
+        this.start_point = null;
+        this.section = null;
     }
 
     dispatch_selection_update(){
-        this.dispatchEvent(new CustomEvent("selection-update"));
-    }
-
-    start_point_request(e: Event){
-        this.next_receiver = <SinglePointSelector>e.target;
-    }
-
-    end_point_request(e: Event){
-        this.next_receiver = <SinglePointSelector>e.target;
-    }
-
-    section_request(e: Event){
-        this.next_receiver = <SectionSelector>e.target;
+        this.dispatchEvent(new CustomEvent("selection-update", {detail: {
+            start_point: this.start_point,
+            end_point: this.end_point,
+            section: this.section,
+            point_shp: this.point_shapefile, 
+            section_shp: this.section_shapefile
+        }}));
     }
 
     associate_points(e: Event){
@@ -68,100 +76,46 @@ export class PointSelector extends LitElement {
                     start_point: this.start_point,
                     end_point: this.end_point,
                     section: this.section,
+                    point_shp: this.point_shapefile,
+                    section_shp: this.section_shapefile
                 }}));
             }
-            this.start_point = null;
-            this.end_point = null;
-            this.section = null;
+            this.reset_state();
         } else {
             this.error = "Select start and end points and their associated section";
         }
     }
 
+    delete_points(e: Event){
+        if(this.start_point && this.end_point){
+            if(this.start_point.dbf_properties.Route != this.end_point.dbf_properties.Route){
+                this.error = "Start and end points must come from the same route";
+            } else {
+                this.error = "";
+                this.dispatchEvent(new CustomEvent("delete-points", {detail: {
+                    start_point: this.start_point,
+                    end_point: this.end_point,
+                    point_shp: this.point_shapefile
+                }}));
+            }
+            this.reset_state();
+        } else {
+            this.error = "Select start and end points";
+        }
+    }
+
     render() {
         return html`
-            <div><single-point-selector 
-                .highlighted=${this.next_receiver?.name=="Start"}
-                @request-select-point=${this.start_point_request}
-                name="Start" .point=${this.start_point}>
-            </single-point-selector></div>
-            <div><single-point-selector 
-                .highlighted=${this.next_receiver?.name=="End"}
-                @request-select-point=${this.end_point_request}
-                name="End" .point=${this.end_point}>
-            </single-point-selector></div>
-            <div><section-selector 
-                .highlighted=${this.next_receiver?.name=="Section"}
-                @request-select-section=${this.section_request}
-                name="Section" .section=${this.section}>
-            </section-selector></div>
-            <button @click=${this.associate_points} class=${(this.start_point && this.end_point && this.section) ? "" : "grayed"}>Associate Points</button>
+        <div class="container">
+            <div class="next-action">Select Points And Section</div>
+            <div>Section: ${this.section ? `${this.section.dbf_properties.NAME}-${this.section.dbf_properties.UniqueID}` : "Not Selected"}</div>
+            <div>Point 1: ${this.start_point ? `${this.start_point.dbf_properties.Route}-${this.start_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
+            <div>Point 2: ${this.end_point ? `${this.end_point.dbf_properties.Route}-${this.end_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
+            <button @click=${this.associate_points} class=${(this.start_point && this.end_point && this.section)?  "" : "grayed"}>Associate Points</button>
+            <button @click=${this.delete_points} class=${(this.start_point && this.end_point) ? "" : "grayed"}>Delete Points</button>
             <div style="color: red">${this.error}</div>
-        `
-    }
-
-}
-
-@customElement("single-point-selector")
-export class SinglePointSelector extends LitElement {
-    static styles = css`
-        .highlight {
-            border: 3px solid black;
-            background-color: skyblue;
-        }
-    `
-    @property()
-    point: DbfFeature;
-    @property()
-    name: string;
-    @property()
-    highlighted: boolean;
-
-    request_select_point(){
-        this.dispatchEvent(new CustomEvent("request-select-point", {detail: this.name}));
-    }
-
-    render() {
-        return html`
-            <div class=${this.highlighted ? "highlight" : ""}>
-                <div>${this.name}</div>
-                <button @click=${this.request_select_point}>Select Point</button>
-                <div>
-                    ${this.point ? (html`${this.point.dbf_properties.Route}-${this.point.dbf_properties.FIS_Count}`) : (this.highlighted ? html`Click On Map` : html`No Point Selected`)}
-                </div>
-            </div>
-        `
-    }
-}
-
-@customElement("section-selector")
-export class SectionSelector extends LitElement {
-    static styles = css`
-        .highlight {
-            border: 3px solid black;
-            background-color: skyblue;
-        }
-    `
-    @property()
-    section: DbfFeature;
-    @property()
-    name: string;
-    @property()
-    highlighted: boolean;
-
-    request_select_point(){
-        this.dispatchEvent(new CustomEvent("request-select-section", {detail: this.name}));
-    }
-
-    render() {
-        return html`
-        <div class=${this.highlighted ? "highlight" : ""}>
-            <div>${this.name}</div>
-            <button @click=${this.request_select_point}>Select Section</button>
-            <div>
-                ${this.section ? (html`${this.section.dbf_properties.NAME}-${this.section.dbf_properties.UniqueID}`) : (this.highlighted ? html`Click On Map` : html`No Point Selected`)}
-            </div>
         </div>
         `
     }
+
 }

@@ -28,7 +28,7 @@ async function load_projection(file: FileSystemFileHandle, dest_projection: stri
 }
 
 
-export type DbfFeature = Feature<Geometry> & { dbf_properties?: any, parent_shapefile: Shapefile }
+export type DbfFeature = Feature<Geometry> & { dbf_properties?: any, is_start_stop?: boolean, parent_shapefile: Shapefile }
 
 
 /**
@@ -135,7 +135,7 @@ export class Shapefile {
     private modified: boolean = false;
     constructor(public name : string, public features: DbfFeature[], public props: string[], private dbf_file: FileSystemFileHandle){
         features.forEach(f=>f.parent_shapefile=this);
-        this.line_width = 2;
+        this.line_width = 4;
         this.set_visible_props([]);
         this.vector_source = new VectorSource({
             features: this.features,
@@ -297,7 +297,7 @@ export class Shapefile {
         const existing = Shapefile.section_color_map.get(sectionid);
         if(existing) return existing;
 
-        const new_color = [Math.random() * 255, Math.random() * 255, Math.random() * 255];
+        const new_color = [Math.random() * 196, Math.random() * 255, Math.random() * 255];
         Shapefile.section_color_map.set(sectionid, new_color);
         return new_color;
     }
@@ -320,13 +320,14 @@ export class Shapefile {
                         geometry: new Circle(pt, 1)
                     })
                 } else {
+                    const color = this.color_of_section(feature.dbf_properties.SectionID);
                     return new Style({
                         stroke: new Stroke({
                             width: this.line_width,
-                            color: this.color_of_section(feature.dbf_properties.SectionID)
+                            color: feature.is_start_stop ? [0, 255, 0] : color
                         }),
                         fill: new Fill({
-                            color: "gray"
+                            color: color
                         }),
                         geometry: new Circle(pt, 2)
                     })
@@ -340,7 +341,7 @@ export class Shapefile {
                     fill: new Fill({
                         color: "lightblue"
                     }),
-                    geometry: new Circle(pt, 3)
+                    geometry: new Circle(pt, 2)
                 })
             }
         } else {
@@ -407,26 +408,31 @@ export class Shapefile {
     }
 
     associate_points(p1: DbfFeature, p2: DbfFeature, section: DbfFeature){
-        if(p1.getGeometry().getType() != "Point" || p2.getGeometry().getType() != "Point"){
+        if(!p1 || !p2 || p1.getGeometry().getType() != "Point" || p2.getGeometry().getType() != "Point"){
             throw new Error("Bad geometry types for p1, p2");
         }
 
         const id = section.dbf_properties.UniqueID;
 
-        this.iter_points_between(p1, p2, (f)=>{
+        this.points_between(p1, p2).forEach((f)=>{
             f.dbf_properties.SectionID = id; 
+            f.is_start_stop = false;
         });
+        p1.is_start_stop = true;
+        p2.is_start_stop = true;
         this.modified = true;
     }
 
-    private iter_points_between(p1: DbfFeature, p2: DbfFeature, func: (f: DbfFeature)=>void){
+    points_between(p1: DbfFeature, p2: DbfFeature): DbfFeature[]{
         if(p1 && p2 && p1.dbf_properties.Route == p2.dbf_properties.Route){
             const min_fis = Math.min(p1.dbf_properties.FIS_Count, p2.dbf_properties.FIS_Count);
             const max_fis = Math.max(p1.dbf_properties.FIS_Count, p2.dbf_properties.FIS_Count);
-            this.features.filter(f=>
+            return this.features.filter(f=>
                 (f.dbf_properties.Route == p1.dbf_properties.Route) &&
                 (f.dbf_properties.FIS_Count >= min_fis && f.dbf_properties.FIS_Count <= max_fis)
-            ).forEach(func);
+            );
+        } else {
+            return [];
         }
     }
 
@@ -449,21 +455,23 @@ export class Shapefile {
         if(p1) this.highlighted.push(p1);
         if(p2) this.highlighted.push(p2);
 
-        this.iter_points_between(p1, p2, (f)=>{
+        this.points_between(p1, p2).forEach((f)=>{
             f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)]);
             this.highlighted.push(f);
         });
     }
 
-    highlight_section(section: DbfFeature){
+    highlight_section(section: DbfFeature | null){
         if(section && (section.parent_shapefile != this)){
             throw new Error("Highlight of section that doesn't belong to current shapefile");
         }
 
         this.clear_highlighted();
-        this.highlighted.push(section);
 
-        section.setStyle([this.highlight_style(section), this.text_style(section, this.visible_props)]);
+        if(section){
+            this.highlighted.push(section);
+            section.setStyle([this.highlight_style(section), this.text_style(section, this.visible_props)]);
+        }   
     }
 
     async save() {
