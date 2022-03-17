@@ -1,6 +1,6 @@
 import GeoJSON from "ol/format/GeoJSON";
 import { Feature } from "ol";
-import { Circle, Geometry, Point } from "ol/geom";
+import { Circle, Geometry, LineString, MultiLineString, Point } from "ol/geom";
 import proj4 from "proj4";
 import * as shapefile from "shapefile"
 import { extension_of } from "./FileHandling";
@@ -11,6 +11,7 @@ import Fill from "ol/style/Fill";
 import VectorSource from "ol/source/Vector";
 import VectorImageLayer from "ol/layer/VectorImage";
 import { Color } from "ol/color";
+import { Coordinate, distance } from "ol/coordinate";
 const dbf: { structure: (data: any[], meta?: any[])=> ArrayBuffer} = require("./dbf/index");
 
 /**
@@ -174,9 +175,9 @@ export class Shapefile {
         }
     }
     
-    identify_section_associations(sections_file: Shapefile): DbfFeature[][]{
+    identify_section_associations(sections_file: Shapefile): {tails: PointSection[], all: PointSection[]} {
         const point_runs = new Map<String, DbfFeature[]>();
-        const rolling_width = 10;
+        const rolling_width = 12;
         this.features.forEach(f=>{
             let route = point_runs.get(f.dbf_properties.Route);
             if(!route) {
@@ -187,11 +188,11 @@ export class Shapefile {
             route.push(f);
         });
 
-        let bad_points: DbfFeature[][] = []
+        let tails: PointSection[] = [];
+        let all: PointSection[] = [];
     
         point_runs.forEach((run, route)=>{
             const nearest = run.map(f=>{
-                if(f.dbf_properties.SectionID) return "";
                 const nearest = <DbfFeature>sections_file.vector_source.getClosestFeatureToCoordinate((f.getGeometry() as Point).getFlatCoordinates());
                 return nearest.dbf_properties.UniqueID;
             });
@@ -233,17 +234,19 @@ export class Shapefile {
             }
 
             if(bad_start.length > 0){
-                bad_points.push(bad_start);
+                tails.push(new PointSection(bad_start, null));
             }
 
             if(bad_end.length > 0){
-                bad_points.push(bad_end);
+                tails.push(new PointSection(bad_end, null));
             }
+
+            PointSection.from_point_array(run, sections_file).forEach(f=>all.push(f));
         })
         this.modified = true;
         this.restyle_all();
 
-        return bad_points;
+        return {tails, all};
     }
     
     private text_of(feature: DbfFeature, visible_props: string[]){
@@ -265,6 +268,57 @@ export class Shapefile {
                 text: this.text_of(feature, props)
             })
         })
+    }
+
+    private focus_style(feature: DbfFeature): Style {
+        const geo = feature.getGeometry();
+        if(geo.getType() == "Point"){
+            const pt = (geo as Point).getFlatCoordinates();
+            if(feature.dbf_properties.SectionID){ 
+                if(feature.dbf_properties.SectionID == "Deleted"){
+                    return new Style({
+                        stroke: new Stroke({
+                            width: this.line_width,
+                            color: [0, 255, 0]
+                        }),
+                        fill: new Fill({
+                            color: "gray"
+                        }),
+                        geometry: new Circle(pt, 1)
+                    })
+                } else {
+                    const color = this.color_of_section(feature.dbf_properties.SectionID);
+                    return new Style({
+                        stroke: new Stroke({
+                            width: this.line_width,
+                            color: [0, 255, 0]
+                        }),
+                        fill: new Fill({
+                            color: color
+                        }),
+                        geometry: new Circle(pt, 2)
+                    })
+                } 
+            } else {
+                return new Style({
+                    stroke: new Stroke({
+                        width: this.line_width,
+                        color: 'blue'
+                    }),
+                    fill: new Fill({
+                        color: "lightblue"
+                    }),
+                    geometry: new Circle(pt, 2)
+                })
+            }
+        } else {
+            return new Style({
+                stroke: new Stroke({
+                    width: this.line_width * 2,
+                    color: 'blue'
+                })
+            })
+        }
     }
 
     private highlight_style(feature: DbfFeature): Style {
@@ -408,6 +462,11 @@ export class Shapefile {
         this.modified = true;
     }
 
+    set_deleted_section(section: PointSection){
+        if(section.points[0].parent_shapefile != this) throw new Error("Deleting points not owned by shapefile");
+        this.set_deleted(section.points);
+    }
+
     associate_points(p1: DbfFeature, p2: DbfFeature, section: DbfFeature){
         if(!p1 || !p2 || p1.getGeometry().getType() != "Point" || p2.getGeometry().getType() != "Point"){
             throw new Error("Bad geometry types for p1, p2");
@@ -440,6 +499,19 @@ export class Shapefile {
     clear_highlighted(){
         this.highlighted.forEach(h=>h.setStyle([this.base_style(h), this.text_style(h, this.visible_props)]));
         this.highlighted = [];
+    }
+
+    highlight_point_section(section: PointSection){
+        section.points.forEach(p=>{
+            if(p.parent_shapefile != this) new Error("Highlight of points that don't belong to current shapefile");
+        });
+
+        this.clear_highlighted();
+
+        section.points.forEach(f=>{
+            f.setStyle([this.focus_style(f), this.text_style(f, this.visible_props)]);
+            this.highlighted.push(f);
+        });
     }
 
     highlight_point_selection(p1: DbfFeature, p2: DbfFeature){
@@ -483,5 +555,91 @@ export class Shapefile {
             await writeable.close();
             return true;
         }
+    }
+}
+
+export class PointSection {
+    coverage: number;
+    section_id: string;
+    constructor(public points: DbfFeature[], public section: DbfFeature){
+        const len = this.length();
+        const sec_len = this.section_length();
+
+        if(sec_len == 0) {
+            this.coverage = 0;
+        } else {
+            this.coverage = len / sec_len;
+        }
+        this.section_id = section?.dbf_properties.UniqueID || "";
+    }
+
+    length(): number {
+        let pt = (this.points[0].getGeometry() as Point).getFlatCoordinates();
+        let dist = 0;
+
+        for(const point of this.points){
+            const coord = (point.getGeometry() as Point).getFlatCoordinates();
+            dist += distance(coord, pt);
+            pt = coord;
+        }
+
+        return dist;
+    }
+
+    private nearest_segment(feat: DbfFeature, lines: MultiLineString): number{
+        const segs = lines.getLineStrings();
+        let min_dist = Infinity;
+        let best = 0;
+        const pt = (feat.getGeometry() as Point).getFlatCoordinates();
+        for(let i = 0; i < segs.length; i++){
+            const closest = segs[i].getClosestPoint(pt);
+            const dist = distance(pt, closest);
+            if(dist < min_dist){
+                min_dist = dist;
+                best = i;
+            }
+        }
+
+        return best;
+    }
+
+    section_length(): number {
+        if(!this.section) return 0;
+        if(this.section.getGeometry().getType() == "LineString"){
+            const geo = this.section.getGeometry() as LineString;
+            return geo.getLength();
+        } else if(this.section.getGeometry().getType() == "MultiLineString") {
+            const geo = this.section.getGeometry() as MultiLineString;
+
+            let associated_segments = new Set<number>();
+            this.points.forEach(p=>associated_segments.add(this.nearest_segment(p, geo)));
+
+            return Array.from(associated_segments).reduce((sum,idx)=>sum + geo.getLineString(idx).getLength(), 0);
+        } else {
+            throw new Error(`unexpected geometry type for section: ${this.section.getGeometry().getType()}`)
+        }
+    }
+
+    static from_point_array(points: DbfFeature[], sections_file: Shapefile): PointSection[] {
+        let last_section_id = "";
+        let current_run: DbfFeature[] = [];
+        let sections: PointSection[] = [];
+        for(const pt of points){
+            if(pt.dbf_properties.SectionID != last_section_id){
+                if(current_run.length > 0){
+                    sections.push(new PointSection(current_run, sections_file.features.find(f=>f.dbf_properties.UniqueID == last_section_id)));
+                }
+                current_run = [];
+                last_section_id = pt.dbf_properties.SectionID;
+            }
+
+            current_run.push(pt);
+        }
+
+        if(current_run.length > 0){
+            sections.push(new PointSection(current_run, sections_file.features.find(f=>f.dbf_properties.UniqueID == last_section_id)));
+        }
+
+        return sections;
     }
 }

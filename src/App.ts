@@ -7,10 +7,10 @@ import { LitElement, html, css } from "lit";
 import { SelectionElement } from "./ui/SelectorArray";
 import { ActionButtons } from "./ui/ActionButtons";
 import { get_folder } from "./FileHandling";
-import { DbfFeature, load_shapefiles, Shapefile } from "./Shapefile";
+import { DbfFeature, load_shapefiles, PointSection, Shapefile } from "./Shapefile";
 import { ShapefileList } from "./ui/ShapefileList";
 import { PointSelector } from "./ui/PointSelector";
-import { PointFixerArray } from "./ui/PointFixerArray";
+import { SectionArray } from "./ui/SectionArray";
 import { Point } from "ol/geom";
 
 @customElement("my-app")
@@ -35,7 +35,7 @@ export class App extends LitElement{
     shapefile_selector: ShapefileList;
     point_selector: PointSelector;
     action_buttons: ActionButtons;
-    point_fixer_array: PointFixerArray;
+    section_array: SectionArray;
     shapefiles: Shapefile[] = [];
     constructor(){
         super();
@@ -84,7 +84,10 @@ export class App extends LitElement{
         });
 
         this.point_selector.addEventListener("delete-points", (evt: CustomEvent)=>{
-            const {start_point, end_point, point_shp} = evt.detail;
+            let {start_point, end_point, point_shp} = evt.detail;
+
+            //if the uesr only selected one point, set the end point to the start point
+            end_point = end_point || start_point;
             point_shp.set_deleted(point_shp.points_between(start_point, end_point));
             point_shp.clear_highlighted();
         });
@@ -94,24 +97,29 @@ export class App extends LitElement{
             this.shapefiles.forEach(shp=>shp.save());
         });
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
-            const {points, sections} = e.detail;
+            const {points, sections, min_coverage} = e.detail;
             if(points && sections){
-                const bad_points = points.identify_section_associations(sections);
-                this.point_fixer_array.bad_points = bad_points;
+                const {tails, all} = (points as Shapefile).identify_section_associations(sections);
+                const low_coverage = all.filter(p=>p.coverage < min_coverage);
+                const high_coverage = all.filter(p=>p.coverage >= min_coverage);
+                low_coverage.forEach(l=>l.points[0]?.parent_shapefile.set_deleted_section(l));
+                high_coverage.sort((a, b)=>a.coverage - b.coverage);
+                this.section_array.sections = high_coverage;
             } else {
                 alert("Point and section shapefiles not loaded");
             }
         });
 
-        this.point_fixer_array = new PointFixerArray();
-        this.point_fixer_array.addEventListener("delete-points", (evt: CustomEvent)=>{
-            const pts : DbfFeature[] = evt.detail;
-            pts[0].parent_shapefile.set_deleted(pts);
+        this.section_array = new SectionArray();
+        this.section_array.addEventListener("delete-points", (evt: CustomEvent)=>{
+            const pts : PointSection = evt.detail;
+            pts.points[0]?.parent_shapefile.set_deleted_section(pts);
         })
 
-        this.point_fixer_array.addEventListener("focus-points", (evt: CustomEvent)=>{
-            const pts : DbfFeature[] = evt.detail;
-            const center = (pts[0].getGeometry() as Point).getFlatCoordinates();
+        this.section_array.addEventListener("focus-points", (evt: CustomEvent)=>{
+            const pts : PointSection = evt.detail;
+            const center = (pts.points[(pts.points.length / 2) | 0].getGeometry() as Point).getFlatCoordinates();
+            pts.points[0]?.parent_shapefile.highlight_point_section(pts);
             this.map.setView(
                 new View({
                     center: center,
@@ -169,7 +177,7 @@ export class App extends LitElement{
                 ${this.point_selector}
             </div>
             <div style="grid-row: 3; grid-column: 1 / 3; overflow-y: scroll;">${this.shapefile_selector}</div>
-            <div style="grid-row: 1; grid-column: 2;">${this.point_fixer_array}</div>
+            <div style="grid-row: 1; grid-column: 2;">${this.section_array}</div>
         </div>`
     }
 }

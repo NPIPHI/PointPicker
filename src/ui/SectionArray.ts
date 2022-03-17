@@ -1,11 +1,11 @@
 import {css, html, LitElement } from "lit"
 import {customElement, property} from "lit/decorators.js"
-import { DbfFeature, Shapefile } from "../Shapefile";
+import { PointSection } from "../Shapefile";
 
 @customElement("point-fixer-array")
-export class PointFixerArray extends LitElement {
+export class SectionArray extends LitElement {
     @property()
-    bad_points: DbfFeature[][] = [];
+    sections: PointSection[] = [];
 
     static styles = css`
         .container {
@@ -14,26 +14,26 @@ export class PointFixerArray extends LitElement {
         }
     `
 
-    on_focus_view(pts: DbfFeature[]){
+    on_focus_view(pts: PointSection){
         this.dispatchEvent(new CustomEvent("focus-points", {detail: pts}));
     }
 
-    on_delete(pts: DbfFeature[]){
+    on_delete(pts: PointSection){
         this.dispatchEvent(new CustomEvent("delete-points", {detail: pts}));
     }
 
-    on_resolve(pts: DbfFeature[]){
-        this.bad_points = this.bad_points.filter(p=>p!=pts);
+    on_resolve(pts: PointSection){
+        this.sections = this.sections.filter(p=>p!=pts);
         this.requestUpdate();
     }
 
     render() {
         return html`
         <div class="container">
-            <div>Unresolved Points<br></div>
-            ${this.bad_points.map(p=>
+            <div>Sections<br></div>
+            ${this.sections.map(p=>
                 html`<div>
-                    ${p[0].dbf_properties.Route}
+                    <div>ID: ${p.section_id}; Covergae ${(p.coverage * 100).toPrecision(3)}%</div>
                     <button @click=${()=>this.on_focus_view(p)}>View</button>
                     <button @click=${()=>this.on_delete(p)}>Delete</button>
                     <button @click=${()=>this.on_resolve(p)}>Resolve</button>
