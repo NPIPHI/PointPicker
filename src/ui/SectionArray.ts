@@ -23,7 +23,11 @@ export class SectionArray extends LitElement {
     }
 
     on_resolve(pts: PointSection){
-        this.sections = this.sections.filter(p=>p!=pts);
+        const idx = this.sections.indexOf(pts);
+        this.sections.splice(idx, 1);
+        if(idx < this.sections.length){
+            this.dispatchEvent(new CustomEvent("focus-points", {detail: this.sections[idx]}));
+        }
         this.requestUpdate();
     }
 

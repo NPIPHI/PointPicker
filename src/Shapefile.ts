@@ -175,9 +175,10 @@ export class Shapefile {
         }
     }
     
-    identify_section_associations(sections_file: Shapefile): {tails: PointSection[], all: PointSection[]} {
+    identify_section_associations(sections_file: Shapefile): PointSection[] {
         const point_runs = new Map<String, DbfFeature[]>();
         const rolling_width = 12;
+        const distance_tolerance = 50;
         this.features.forEach(f=>{
             let route = point_runs.get(f.dbf_properties.Route);
             if(!route) {
@@ -188,57 +189,48 @@ export class Shapefile {
             route.push(f);
         });
 
-        let tails: PointSection[] = [];
         let all: PointSection[] = [];
     
         point_runs.forEach((run, route)=>{
             const nearest = run.map(f=>{
-                const nearest = <DbfFeature>sections_file.vector_source.getClosestFeatureToCoordinate((f.getGeometry() as Point).getFlatCoordinates());
-                return nearest.dbf_properties.UniqueID;
+                const coords = (f.getGeometry() as Point).getFlatCoordinates();
+                const nearest = <DbfFeature>sections_file.vector_source.getClosestFeatureToCoordinate(coords);
+                const dist_pt = nearest.getGeometry().getClosestPoint(coords);
+                const dist = distance(dist_pt, coords);
+                return {
+                    sec_id: nearest.dbf_properties.UniqueID,
+                    dist: dist
+                };
             });
     
-            let rolling_average = nearest.slice(0, rolling_width);
+            let rolling_average: string[] = nearest.slice(0, rolling_width).map(f=>f.sec_id);
     
-            let bad_start = [];
             for(let i = 0; i < rolling_width / 2; i++){
                 if(!run[i].dbf_properties.SectionID){
                     const most_freq = this.most_frequent(rolling_average);
     
                     //only set the tails if they are part of the larger nearby section
-                    if(nearest[i] == most_freq){
+                    if(nearest[i].sec_id == most_freq && nearest[i].dist < distance_tolerance){
                         run[i].dbf_properties.SectionID = most_freq;
-                    } else {
-                        bad_start.push(run[i]);
                     }
                 }
             }
     
             for(let i = rolling_width / 2; i < run.length - rolling_width/2; i++){
                 rolling_average.splice(0,1);
-                rolling_average.push(nearest[i + rolling_width/2]);
-                if(!run[i].dbf_properties.SectionID){
+                rolling_average.push(nearest[i + ((rolling_width/2) | 0)].sec_id);
+                if(!run[i].dbf_properties.SectionID && nearest[i].dist < distance_tolerance){
                     run[i].dbf_properties.SectionID = this.most_frequent(rolling_average);
                 }
             }
             
-            let bad_end = [];
             for(let i = run.length - rolling_width/2; i < run.length; i++){
                 const most_freq = this.most_frequent(rolling_average);
     
                 //only set the tails if they are part of the larger nearby section
-                if(nearest[i] == most_freq){
+                if(nearest[i].sec_id == most_freq && nearest[i].dist < distance_tolerance){
                     run[i].dbf_properties.SectionID = most_freq;
-                } else {
-                    bad_end.push(run[i]);
                 }
-            }
-
-            if(bad_start.length > 0){
-                tails.push(new PointSection(bad_start, null));
-            }
-
-            if(bad_end.length > 0){
-                tails.push(new PointSection(bad_end, null));
             }
 
             PointSection.from_point_array(run, sections_file).forEach(f=>all.push(f));
@@ -246,7 +238,7 @@ export class Shapefile {
         this.modified = true;
         this.restyle_all();
 
-        return {tails, all};
+        return all;
     }
     
     private text_of(feature: DbfFeature, visible_props: string[]){
@@ -290,8 +282,8 @@ export class Shapefile {
                     const color = this.color_of_section(feature.dbf_properties.SectionID);
                     return new Style({
                         stroke: new Stroke({
-                            width: this.line_width,
-                            color: [0, 255, 0]
+                            width: this.line_width / 2,
+                            color: 'lightgreen'
                         }),
                         fill: new Fill({
                             color: color

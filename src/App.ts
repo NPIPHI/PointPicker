@@ -99,9 +99,9 @@ export class App extends LitElement{
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
             const {points, sections, min_coverage} = e.detail;
             if(points && sections){
-                const {tails, all} = (points as Shapefile).identify_section_associations(sections);
-                const low_coverage = all.filter(p=>p.coverage < min_coverage);
-                const high_coverage = all.filter(p=>p.coverage >= min_coverage);
+                const point_sections = (points as Shapefile).identify_section_associations(sections);
+                const low_coverage = point_sections.filter(p=>p.coverage < min_coverage);
+                const high_coverage = point_sections.filter(p=>p.coverage >= min_coverage);
                 low_coverage.forEach(l=>l.points[0]?.parent_shapefile.set_deleted_section(l));
 
                 //sort by descending from >100 to 100, then ascending
