@@ -10,6 +10,8 @@ export class ActionButtons extends LitElement {
     sections_shapefile: Shapefile;
     @property()
     min_coverage: number = 50;
+    @property()
+    max_distance: number = 50;
 
 
     on_load_shapefiles(){
@@ -24,7 +26,8 @@ export class ActionButtons extends LitElement {
         this.dispatchEvent(new CustomEvent("assign-sections", {detail: {
             points: this.points_shapefile,
             sections: this.sections_shapefile,
-            min_coverage: this.min_coverage / 100
+            min_coverage: this.min_coverage / 100,
+            max_dist: this.max_distance
         }}))
     }
 
@@ -33,13 +36,19 @@ export class ActionButtons extends LitElement {
         this.min_coverage = parseFloat(input.value);
     }
 
+    max_dist_change(e: Event){
+        const input = e.target as HTMLInputElement;
+        this.max_distance = parseFloat(input.value);
+    }
+
     render() {
         return html`
             <button @click=${()=>this.on_load_shapefiles()}>Load Shapefile</button>
             <button @click=${()=>this.on_save()}>Save Changes</button>
             <div>
                 <button @click=${()=>this.on_assign_sections()}>Auto Assign Sections</button>
-                <div>Minimum Coverage<input type="number" @change=${this.min_coverage_change} min=0 max=100 value=${this.min_coverage}></div>
+                <div>Minimum Coverage<input type="number" @change=${this.min_coverage_change} min=0 max=100 value=${this.min_coverage}>%</div>
+                <div>Maximum Distance<input type="number" @change=${this.max_dist_change} min=0 value=${this.max_distance}>m</div>
                 <div>Point: ${this.points_shapefile?.name || "No Points Shapefile"}</div>
                 <div>Sections: ${this.sections_shapefile?.name || "No Sections Shapefile"}</div>
             </div>

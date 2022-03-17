@@ -175,10 +175,10 @@ export class Shapefile {
         }
     }
     
-    identify_section_associations(sections_file: Shapefile): PointSection[] {
+    identify_section_associations(sections_file: Shapefile, max_dist: number): PointSection[] {
         const point_runs = new Map<String, DbfFeature[]>();
         const rolling_width = 12;
-        const distance_tolerance = 50;
+        const distance_tolerance = max_dist;
         this.features.forEach(f=>{
             let route = point_runs.get(f.dbf_properties.Route);
             if(!route) {

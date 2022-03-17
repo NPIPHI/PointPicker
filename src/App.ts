@@ -97,9 +97,9 @@ export class App extends LitElement{
             this.shapefiles.forEach(shp=>shp.save());
         });
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
-            const {points, sections, min_coverage} = e.detail;
+            const {points, sections, min_coverage, max_dist} = e.detail;
             if(points && sections){
-                const point_sections = (points as Shapefile).identify_section_associations(sections);
+                const point_sections = (points as Shapefile).identify_section_associations(sections, max_dist);
                 const low_coverage = point_sections.filter(p=>p.coverage < min_coverage);
                 const high_coverage = point_sections.filter(p=>p.coverage >= min_coverage);
                 low_coverage.forEach(l=>l.points[0]?.parent_shapefile.set_deleted_section(l));
