@@ -40,10 +40,15 @@ export class ActionButtons extends LitElement {
         }
     }
 
+    on_export(e: Event){
+        this.dispatchEvent(new CustomEvent("export-csv"));
+    }
+
     render() {
         return html`
             <button @click=${this.on_load_shapefiles}>Load Shapefile</button>
             <button @click=${this.on_save}>Save Changes</button>
+            <button @click=${this.on_export}>Export</button>
             <div>
                 <button @click=${this.on_assign_sections}>Auto Assign Sections</button>
                 <div>Minimum Coverage<input type="number" @change=${this.min_coverage_change} min=0 max=100 value=${this.min_coverage}>%</div>

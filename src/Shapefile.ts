@@ -177,18 +177,9 @@ export class Shapefile {
     }
     
     identify_section_associations(sections_file: Shapefile, max_dist: number): PointSection[] {
-        const point_runs = new Map<String, DbfFeature[]>();
+        const point_runs = this.make_point_runs();
         const distance_tolerance = max_dist;
         const rolling_width = 20;
-        this.features.forEach(f=>{
-            let route = point_runs.get(f.dbf_properties.Route);
-            if(!route) {
-                point_runs.set(f.dbf_properties.Route, []);
-                route = point_runs.get(f.dbf_properties.Route);
-            }
-    
-            route.push(f);
-        });
 
         let all: PointSection[] = [];
     
@@ -206,15 +197,6 @@ export class Shapefile {
             
 
             const width = Math.min(run.length, rolling_width);
-            // const width = (()=>{
-            //     if(run.length < min_rolling_width){
-            //         return run.length;
-            //     } else if(run.length < 100){
-            //         return min_rolling_width;
-            //     } else {
-            //         return 20;
-            //     }
-            // })()
 
             //integer value of half width
             const i_width_2 = (width / 2) | 0;
@@ -569,6 +551,58 @@ export class Shapefile {
             this.highlighted.push(section);
             section.setStyle([this.highlight_style(section), this.text_style(section, this.visible_props)]);
         }   
+    }
+
+    private make_point_runs() : Map<string, DbfFeature[]>{
+        const point_runs = new Map<string, DbfFeature[]>();
+        this.features.forEach(f=>{
+            let route = point_runs.get(f.dbf_properties.Route);
+            if(!route) {
+                point_runs.set(f.dbf_properties.Route, []);
+                route = point_runs.get(f.dbf_properties.Route);
+            }
+    
+            route.push(f);
+        });
+
+        return point_runs;
+    }
+
+    async export_point_sections() {
+        if(this.routes){
+            let sections: {features: DbfFeature[], section_id: string}[] = [];
+            let runs = this.make_point_runs();
+
+            runs.forEach((run, route)=>{
+                let last_end = 0;
+                for(let i = 0; i < run.length - 1; i++){
+                    if(run[i].dbf_properties.SectionID != run[i+1].dbf_properties.SectionID){
+                        sections.push({features: run.slice(last_end, i + 1), section_id: run[i].dbf_properties.SectionID});
+                        last_end = i+1;
+                    }
+                }
+                
+                sections.push({features: run.slice(last_end), section_id: run[run.length-1].dbf_properties.SectionID});
+            });
+
+            const csv_header = "route, start_FIS, end_FIS, section_unique_id\n";
+            const csv_rows = sections
+            .filter(s=>s.section_id != "Deleted")
+            .map(s=>{
+                const {features, section_id} = s;
+                const start = features[0];
+                const end = features[features.length-1];
+                return [start.dbf_properties.Route, start.dbf_properties.FIS_Count, end.dbf_properties.FIS_Count, section_id];
+            });
+
+            const file_str = csv_header + csv_rows.map(r=>r.join(',')).join('\n');
+            const file = await window.showSaveFilePicker({suggestedName: `${this.name}_sections.csv`});
+            const writeable = await file.createWritable();
+            await writeable.write(file_str);
+            await writeable.close();
+        } else {
+            throw new Error("Export Point sections on non point shapefile")
+        }
     }
 
     async save() {

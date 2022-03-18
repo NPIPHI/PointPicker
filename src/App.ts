@@ -101,13 +101,16 @@ export class App extends LitElement{
             this.shapefiles.forEach(s=>s.clear_selections());
             this.section_array.sections = [];
         });
+        this.action_buttons.addEventListener("export-csv", ()=>{
+            this.shapefiles.filter(s=>s.routes).forEach(s=>s.export_point_sections());
+        })
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
             const {points, sections, min_coverage} = e.detail;
             if(points && sections){
                 //hard cutoff at 50 meters from nearest feature
                 const max_dist = 50;
                 const point_sections = (points as Shapefile).identify_section_associations(sections, max_dist);
-                point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>{s.set_points_deleted());
+                point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>{s.set_points_deleted()});
                 point_sections.filter(p=>p.coverage >= min_coverage).forEach(s=>s.set_points_to_section());
 
                 const feature_map = new Map<DbfFeature, PointSection[]>();
