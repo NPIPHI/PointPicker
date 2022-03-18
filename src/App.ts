@@ -105,14 +105,14 @@ export class App extends LitElement{
                 low_coverage.forEach(l=>l.points[0]?.parent_shapefile.set_deleted_section(l));
 
                 //sort by descending from >100 to 100, then ascending
-                high_coverage.sort((a, b)=>{
+                point_sections.sort((a, b)=>{
                     if(a.coverage > 1|| b.coverage > 1){
                         return b.coverage - a.coverage;
                     } else {
                         return a.coverage - b.coverage;
                     }
                 });
-                this.section_array.sections = high_coverage;
+                this.section_array.sections = point_sections;
             } else {
                 alert("Point and section shapefiles not loaded");
             }
