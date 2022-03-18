@@ -13,6 +13,7 @@ import { ShapefileList } from "./ui/ShapefileList";
 import { PointSelector } from "./ui/PointSelector";
 import { SectionArray } from "./ui/SectionArray";
 import { Point } from "ol/geom";
+import { distance } from "ol/coordinate";
 
 @customElement("my-app")
 export class App extends LitElement{
@@ -88,7 +89,6 @@ export class App extends LitElement{
             let {start_point, end_point, point_shp} = evt.detail;
 
             //if the uesr only selected one point, set the end point to the start point
-            end_point = end_point || start_point;
             point_shp.set_deleted(point_shp.points_between(start_point, end_point));
             point_shp.clear_highlighted();
         });
@@ -132,11 +132,15 @@ export class App extends LitElement{
         this.section_array.addEventListener("focus-points", (evt: CustomEvent)=>{
             const pts : PointSection = evt.detail;
             const center = (pts.points[(pts.points.length / 2) | 0].getGeometry() as Point).getFlatCoordinates();
+            const p1 = (pts.points[0].getGeometry() as Point).getFlatCoordinates();
+            const p2 = (pts.points[pts.points.length - 1].getGeometry() as Point).getFlatCoordinates()
+            const dist = Math.max(distance(p1, center), distance(p2, center), 100);
+            const screen_width = this.map.getViewport().clientWidth;
             pts.points[0]?.parent_shapefile.highlight_point_section(pts);
             this.map.setView(
                 new View({
                     center: center,
-                    zoom: 18
+                    resolution: dist / screen_width * 3
                 })
             )
         })

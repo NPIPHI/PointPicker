@@ -40,6 +40,7 @@ export class PointSelector extends LitElement {
             this.point_shapefile = point.parent_shapefile;
             if(!this.start_point){
                 this.start_point = point;
+                this.end_point = point;
             } else {
                 this.end_point = point;
             }
@@ -99,14 +100,6 @@ export class PointSelector extends LitElement {
                 }}));
             }
             this.reset_state();
-        } else if(this.start_point || this.end_point){
-            this.error = "";
-            this.dispatchEvent(new CustomEvent("delete-points", {detail: {
-                start_point: this.start_point || this.end_point,
-                end_point: null,
-                point_shp: this.point_shapefile
-            }}));
-            this.reset_state();
         } else {
             this.error = "Select start and end points";
         }
@@ -119,8 +112,8 @@ export class PointSelector extends LitElement {
             <div>Section: ${this.section ? `${this.section.dbf_properties.NAME}-${this.section.dbf_properties.UniqueID}` : "Not Selected"}</div>
             <div>Point 1: ${this.start_point ? `${this.start_point.dbf_properties.Route}-${this.start_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
             <div>Point 2: ${this.end_point ? `${this.end_point.dbf_properties.Route}-${this.end_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
-            <button @click=${this.associate_points} class=${(this.start_point && this.end_point && this.section)?  "" : "grayed"}>Associate Points</button>
-            <button @click=${this.delete_points} class=${(this.start_point || this.end_point) ? "" : "grayed"}>Delete Points</button>
+            <button @click=${this.associate_points} class=${(this.start_point && this.end_point && this.section)?  "" : "grayed"}>Associate Point${(this.start_point == this.end_point) ? "" : "s"}</button>
+            <button @click=${this.delete_points} class=${(this.start_point || this.end_point) ? "" : "grayed"}>Delete Point${(this.start_point == this.end_point) ? "" : "s"}</button>
             <div style="color: red">${this.error}</div>
         </div>
         `

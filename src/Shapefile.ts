@@ -212,10 +212,11 @@ export class Shapefile {
             let rolling_average: string[] = nearest.slice(0, width).map(f=>f.sec_id);
             
             let assignments: string[] = [];
-
+            let in_tail = true;
             for(let i = 0; i < i_width_2; i++){
                 const most_freq = this.most_frequent(rolling_average);
-                if(nearest[i].dist < distance_tolerance){
+                if((!in_tail || nearest[i].sec_id == most_freq) && nearest[i].dist < distance_tolerance){
+                    in_tail = false;
                     assignments.push(most_freq);
                 } else {
                     assignments.push("");
@@ -232,9 +233,11 @@ export class Shapefile {
                 }
             }
             
+            in_tail = true;
             for(let i = run.length - i_width_2; i < run.length; i++){
                 const most_freq = this.most_frequent(rolling_average);    
-                if(nearest[i].dist < distance_tolerance){
+                if((!in_tail || nearest[i].sec_id == most_freq) && nearest[i].dist < distance_tolerance){
+                    in_tail = true;
                     assignments.push(most_freq);
                 } else {
                     assignments.push("");
@@ -284,6 +287,7 @@ export class Shapefile {
                         fill: new Fill({
                             color: "gray"
                         }),
+                        zIndex: 1,
                         geometry: new Circle(pt, 1)
                     })
                 } else {
@@ -296,6 +300,7 @@ export class Shapefile {
                         fill: new Fill({
                             color: color
                         }),
+                        zIndex: 1,
                         geometry: new Circle(pt, 3)
                     })
                 } 

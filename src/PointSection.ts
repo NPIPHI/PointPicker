@@ -23,7 +23,7 @@ export class PointSection {
     }
 
     set_points_to_section(){
-        this.points.forEach(p=>p.dbf_properties.SectionID = this.section_id);
+        this.points.forEach(p=>{if(!p.dbf_properties.SectionID) p.dbf_properties.SectionID = this.section_id});
     }
 
     length(): number {
