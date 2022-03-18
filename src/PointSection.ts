@@ -69,7 +69,7 @@ export class PointSection {
 
         for(let i = 0; i < segment_distances.length - 1; i++){
             // if the points are going almost directly away from the segment
-            if(segment_distances[i + 1] - segment_distances[i] > 0.8 * point_distances[i]){
+            if(segment_distances[i + 1] - segment_distances[i] > 0.6 * point_distances[i]){
                 right_trail.push(this.points[i + 1]);
             } else {
                 right_trail = [];
@@ -80,7 +80,7 @@ export class PointSection {
 
         for(let i = segment_distances.length - 2; i >= 0; i--){
             // if the points are going almost directly away from the segment
-            if(segment_distances[i] - segment_distances[i+1] > 0.8 * point_distances[i]){
+            if(segment_distances[i] - segment_distances[i+1] > 0.6 * point_distances[i]){
                 left_trail.push(this.points[i]);
             } else {
                 left_trail = [];

@@ -283,7 +283,7 @@ export class Shapefile {
                     return new Style({
                         stroke: new Stroke({
                             width: this.line_width,
-                            color: [0, 255, 0]
+                            color: 'yellow'
                         }),
                         fill: new Fill({
                             color: "gray"
@@ -295,12 +295,12 @@ export class Shapefile {
                     return new Style({
                         stroke: new Stroke({
                             width: this.line_width / 2,
-                            color: 'lightgreen'
+                            color: 'yellow'
                         }),
                         fill: new Fill({
                             color: color
                         }),
-                        geometry: new Circle(pt, 2)
+                        geometry: new Circle(pt, 3)
                     })
                 } 
             } else {

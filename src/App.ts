@@ -23,7 +23,7 @@ export class App extends LitElement{
             background-color: lightblue;
             display: grid;
             grid-template-rows: 1fr 1fr 10fr;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1.3fr;
             max-height: 100vh;
         }
 
@@ -108,9 +108,9 @@ export class App extends LitElement{
                 point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>s.set_points_deleted());
                 point_sections.filter(p=>p.coverage >= min_coverage).forEach(s=>s.set_points_to_section());
 
-                //sort by descending from >100 to 100, then ascending
+                //sort by descending from > 102 to 102, then ascending
                 point_sections.sort((a, b)=>{
-                    if(a.coverage > 1|| b.coverage > 1){
+                    if(a.coverage > 1.02 || b.coverage > 1.02){
                         return b.coverage - a.coverage;
                     } else {
                         return a.coverage - b.coverage;
@@ -136,7 +136,7 @@ export class App extends LitElement{
             this.map.setView(
                 new View({
                     center: center,
-                    zoom: 20
+                    zoom: 18
                 })
             )
         })
