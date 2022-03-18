@@ -1,4 +1,4 @@
-import { Map } from "ol";
+import { Map as OlMap } from "ol";
 import OSM from "ol/source/OSM";
 import { View } from "ol";
 import TileLayer from "ol/layer/Tile";
@@ -11,8 +11,8 @@ import { DbfFeature, load_shapefiles, Shapefile } from "./Shapefile";
 import { PointSection } from "./PointSection";
 import { ShapefileList } from "./ui/ShapefileList";
 import { PointSelector } from "./ui/PointSelector";
-import { SectionArray } from "./ui/SectionArray";
-import { Point } from "ol/geom";
+import { SectionArray, SectionInfo } from "./ui/SectionArray";
+import { LineString, MultiLineString, Point } from "ol/geom";
 import { distance } from "ol/coordinate";
 
 @customElement("my-app")
@@ -33,7 +33,7 @@ export class App extends LitElement{
         }
     `
 
-    map : Map;
+    map : OlMap;
     shapefile_selector: ShapefileList;
     point_selector: PointSelector;
     action_buttons: ActionButtons;
@@ -41,7 +41,7 @@ export class App extends LitElement{
     shapefiles: Shapefile[] = [];
     constructor(){
         super();
-        this.map = new Map({
+        this.map = new OlMap({
             target: "map",
             controls: [],
             layers: [
@@ -102,21 +102,30 @@ export class App extends LitElement{
             this.section_array.sections = [];
         });
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
-            const {points, sections, min_coverage, max_dist} = e.detail;
+            const {points, sections, min_coverage} = e.detail;
             if(points && sections){
+                //hard cutoff at 50 meters from nearest feature
+                const max_dist = 50;
                 const point_sections = (points as Shapefile).identify_section_associations(sections, max_dist);
-                point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>s.set_points_deleted());
+                point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>{s.set_points_deleted());
                 point_sections.filter(p=>p.coverage >= min_coverage).forEach(s=>s.set_points_to_section());
 
-                //sort by descending from > 102 to 102, then deleted sections by length, then ascending
-                point_sections.sort((a, b)=>{
-                    if(a.coverage > 1.02 || b.coverage > 1.02){
-                        return b.coverage - a.coverage;
-                    } else {
-                        return a.coverage - b.coverage;
+                const feature_map = new Map<DbfFeature, PointSection[]>();
+                (sections as Shapefile).features.forEach(f=>feature_map.set(f, []));
+                point_sections.forEach(sec=>{
+                    if(sec.section && sec.coverage > min_coverage){
+                        feature_map.get(sec.section).push(sec);
                     }
                 });
-                this.section_array.sections = point_sections;
+
+                let featuers_arr: SectionInfo[] = [];
+                feature_map.forEach((v,k)=>{
+                    featuers_arr.push({point_secs: v, feature: k});
+                });
+                featuers_arr.sort((a,b)=>{
+                    return a.point_secs.reduce((a,b)=>a+b.coverage, 0) - b.point_secs.reduce((a,b)=>a+b.coverage, 0)
+                })
+                this.section_array.sections = featuers_arr;
                 (points as Shapefile).restyle_all();
             } else {
                 alert("Point and section shapefiles not loaded");
@@ -124,26 +133,63 @@ export class App extends LitElement{
         });
 
         this.section_array = new SectionArray();
-        this.section_array.addEventListener("delete-points", (evt: CustomEvent)=>{
-            const pts : PointSection = evt.detail;
-            pts.points[0]?.parent_shapefile.set_deleted_section(pts);
-        })
 
         this.section_array.addEventListener("focus-points", (evt: CustomEvent)=>{
-            const pts : PointSection = evt.detail;
-            const center = (pts.points[(pts.points.length / 2) | 0].getGeometry() as Point).getFlatCoordinates();
-            const p1 = (pts.points[0].getGeometry() as Point).getFlatCoordinates();
-            const p2 = (pts.points[pts.points.length - 1].getGeometry() as Point).getFlatCoordinates()
-            const dist = Math.max(distance(p1, center), distance(p2, center), 100);
-            const screen_width = this.map.getViewport().clientWidth;
-            pts.points[0]?.parent_shapefile.highlight_point_section(pts);
+            const pts : SectionInfo = evt.detail;
+            pts.point_secs[0]?.points[0]?.parent_shapefile.clear_highlighted();
+            pts.point_secs.forEach(sec=>{
+                sec.points[0]?.parent_shapefile.highlight_point_section(sec);
+            })
+
+            pts.feature.parent_shapefile.clear_highlighted();
+            pts.feature.parent_shapefile.highlight_section(pts.feature);
             this.map.setView(
-                new View({
-                    center: center,
-                    resolution: dist / screen_width * 3
-                })
+                this.view_of(pts.feature)
             )
         })
+    }
+
+    private view_of(f: DbfFeature): View {
+        const geo = f.getGeometry();
+        if(geo.getType() == "Point"){
+            const pt = geo as Point;
+            return new View({
+                center: pt.getFlatCoordinates(),
+                zoom: 18
+            })
+        } else if(geo.getType() == "LineString"){
+            const line = geo as LineString;
+            const center = line.getCoordinateAt(0.5);
+            const left = line.getCoordinateAt(0);
+            const right = line.getCoordinateAt(1);
+
+            const dist = Math.max(distance(center, left), distance(center, right), 100);
+            const screen_width = this.map.getViewport().clientWidth;
+
+            return new View({
+                center: center,
+                resolution: dist / screen_width * 3
+            })
+        } else if(geo.getType() == "MultiLineString"){
+            const line = geo as MultiLineString
+            const coords =  line.getCoordinates();
+            const left = coords[0][0];
+            const right = coords[coords.length - 1][coords[coords.length - 1].length-1];
+            const center = [(left[0] + right[0])/2, (left[1] + right[1]) / 2]
+
+            const dist = Math.max(distance(center, left), distance(center, right), 100);
+            const screen_width = this.map.getViewport().clientWidth;
+
+            return new View({
+                center: center,
+                resolution: dist / screen_width * 3
+            })
+        } else {
+            return new View({
+                center: f.getGeometry().getClosestPoint([0,0]),
+                zoom: 17
+            })
+        }
     }
 
     private set_layer_visible(shape: Shapefile, visible: boolean){
@@ -161,6 +207,11 @@ export class App extends LitElement{
     private add_shapefile(shape: Shapefile){
         this.shapefile_selector.add_shapefile(shape);
         this.map.addLayer(shape.layer);
+        if(shape.routes){
+            shape.layer.setZIndex(2);
+        } else {
+            shape.layer.setZIndex(1);
+        }
         this.shapefiles.push(shape);
     }
 

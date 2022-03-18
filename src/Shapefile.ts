@@ -360,8 +360,8 @@ export class Shapefile {
             return new Style({
                 stroke: new Stroke({
                     width: this.line_width * 2,
-                    color: 'blue'
-                })
+                    color: this.color_of_section(feature.dbf_properties.UniqueID)
+                }),
             })
         }
     }
@@ -531,8 +531,6 @@ export class Shapefile {
         section.points.forEach(p=>{
             if(p.parent_shapefile != this) new Error("Highlight of points that don't belong to current shapefile");
         });
-
-        this.clear_highlighted();
 
         section.points.forEach(f=>{
             f.setStyle([this.focus_style(f), this.text_style(f, this.visible_props)]);

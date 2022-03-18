@@ -1,6 +1,9 @@
 import { css, html, LitElement } from "lit"
 import { customElement, property} from "lit/decorators.js"
 import { PointSection } from "../PointSection";
+import { DbfFeature } from "../Shapefile";
+
+export type SectionInfo = {feature: DbfFeature, point_secs: PointSection[]};
 
 @customElement("point-fixer-array")
 export class SectionArray extends LitElement {
@@ -12,7 +15,7 @@ export class SectionArray extends LitElement {
     }
 
     @property()
-    sections: PointSection[] = [];
+    sections: SectionInfo[] = [];
 
     private listener: (evt: KeyboardEvent)=>void;
 
@@ -23,15 +26,11 @@ export class SectionArray extends LitElement {
         }
     `
 
-    on_focus_view(pts: PointSection){
+    on_focus_view(pts: SectionInfo){
         this.dispatchEvent(new CustomEvent("focus-points", {detail: pts}));
     }
 
-    on_delete(pts: PointSection){
-        this.dispatchEvent(new CustomEvent("delete-points", {detail: pts}));
-    }
-
-    on_resolve(pts: PointSection){
+    on_resolve(pts: SectionInfo){
         const idx = this.sections.indexOf(pts);
         this.sections.splice(idx, 1);
         if(idx < this.sections.length){
@@ -44,11 +43,6 @@ export class SectionArray extends LitElement {
         if(evt.key == 'v'){
             if(this.sections.length > 0){
                 this.on_focus_view(this.sections[0]);
-            }
-        }
-        if(evt.key == 'd'){
-            if(this.sections.length > 0){
-                this.on_delete(this.sections[0]);
             }
         }
         if(evt.key == 'r'){
@@ -69,9 +63,8 @@ export class SectionArray extends LitElement {
             <div>Sections<br></div>
             ${this.sections.map((p, i)=>
                 html`<div>
-                    <div>ID: ${p.section_id}; Coverage ${(p.coverage * 100).toPrecision(3)}%</div>
+                    <div>ID: ${p.feature.dbf_properties.NAME}; Coverage ${(p.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100).toPrecision(3)}%</div>
                     <button @click=${()=>this.on_focus_view(p)}>View ${i == 0 ? "(v)" : ""}</button>
-                    <button @click=${()=>this.on_delete(p)}>Delete ${i == 0 ? "(d)" : ""}</button>
                     <button @click=${()=>this.on_resolve(p)}>Resolve ${i == 0 ? "(r)" : ""}</button>
                 </div>`
                 )}
