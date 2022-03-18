@@ -215,9 +215,7 @@ export class Shapefile {
 
             for(let i = 0; i < i_width_2; i++){
                 const most_freq = this.most_frequent(rolling_average);
-
-                //only set the tails if they are part of the larger nearby section
-                if(nearest[i].sec_id == most_freq && nearest[i].dist < distance_tolerance){
+                if(nearest[i].dist < distance_tolerance){
                     assignments.push(most_freq);
                 } else {
                     assignments.push("");
@@ -235,10 +233,8 @@ export class Shapefile {
             }
             
             for(let i = run.length - i_width_2; i < run.length; i++){
-                const most_freq = this.most_frequent(rolling_average);
-    
-                //only set the tails if they are part of the larger nearby section
-                if(nearest[i].sec_id == most_freq && nearest[i].dist < distance_tolerance){
+                const most_freq = this.most_frequent(rolling_average);    
+                if(nearest[i].dist < distance_tolerance){
                     assignments.push(most_freq);
                 } else {
                     assignments.push("");
