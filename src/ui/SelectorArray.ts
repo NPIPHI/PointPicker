@@ -12,11 +12,6 @@ export class SelectorArray extends LitElement {
     @property()
     elements: SelectionElement[] = [];
 
-    constructor(){
-        super();
-        window.addEventListener('keydown', this.handle_keyboard_shortcuts);
-    }
-
     update_selection(e: Event){
         if(e.target instanceof HTMLInputElement){
             const ele = this.elements.find(ele=>ele.prop == (e.target as any).name);
@@ -37,16 +32,7 @@ export class SelectorArray extends LitElement {
         this.requestUpdate();
         this.dispatchEvent(new CustomEvent("selector-update", {detail: this.elements}))
     }
-
-    handle_keyboard_shortcuts(evt: KeyboardEvent){
-
-    }
-
-    disconnectedCallback(): void {
-        super.disconnectedCallback();
-        window.removeEventListener('keydown', this.handle_keyboard_shortcuts);
-    }
-
+    
     render() {
         return html`
             <div @click=${this.update_selection}>

@@ -178,8 +178,8 @@ export class Shapefile {
     
     identify_section_associations(sections_file: Shapefile, max_dist: number): PointSection[] {
         const point_runs = new Map<String, DbfFeature[]>();
-        const rolling_width = 20;
         const distance_tolerance = max_dist;
+        const rolling_width = 20;
         this.features.forEach(f=>{
             let route = point_runs.get(f.dbf_properties.Route);
             if(!route) {
@@ -205,17 +205,27 @@ export class Shapefile {
             });
             
 
-            const width = Math.min(rolling_width, run.length);
+            const width = Math.min(run.length, rolling_width);
+            // const width = (()=>{
+            //     if(run.length < min_rolling_width){
+            //         return run.length;
+            //     } else if(run.length < 100){
+            //         return min_rolling_width;
+            //     } else {
+            //         return 20;
+            //     }
+            // })()
 
             //integer value of half width
             const i_width_2 = (width / 2) | 0;
             let rolling_average: string[] = nearest.slice(0, width).map(f=>f.sec_id);
             
             let assignments: string[] = [];
+
             let in_tail = true;
             for(let i = 0; i < i_width_2; i++){
                 const most_freq = this.most_frequent(rolling_average);
-                if((!in_tail || nearest[i].sec_id == most_freq) && nearest[i].dist < distance_tolerance){
+                if((!in_tail || (nearest[i].sec_id == most_freq)) && nearest[i].dist < distance_tolerance){
                     in_tail = false;
                     assignments.push(most_freq);
                 } else {
@@ -233,16 +243,22 @@ export class Shapefile {
                 }
             }
             
+
+
+            //walk the tail backwards
             in_tail = true;
-            for(let i = run.length - i_width_2; i < run.length; i++){
+            let end_assignments = [];
+            for(let i = run.length - 1; i >= run.length - i_width_2; i--){
                 const most_freq = this.most_frequent(rolling_average);    
-                if((!in_tail || nearest[i].sec_id == most_freq) && nearest[i].dist < distance_tolerance){
-                    in_tail = true;
-                    assignments.push(most_freq);
+                if((!in_tail || (nearest[i].sec_id == most_freq)) && nearest[i].dist < distance_tolerance){
+                    in_tail = false;
+                    end_assignments.push(most_freq);
                 } else {
-                    assignments.push("");
+                    end_assignments.push("");
                 }
             }
+
+            end_assignments.reverse().forEach(e=>assignments.push(e));
 
             PointSection.from_point_array(run, assignments, sections_file).flatMap(f=>f.trim()).forEach(f=>all.push(f));
         })

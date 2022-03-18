@@ -20,7 +20,5 @@ module.exports = {
     path: path.resolve(__dirname, 'public'),
   },
   
-  devtool: 'eval-source-map',
-
   mode: "development",
 };

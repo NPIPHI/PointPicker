@@ -108,7 +108,7 @@ export class App extends LitElement{
                 point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>s.set_points_deleted());
                 point_sections.filter(p=>p.coverage >= min_coverage).forEach(s=>s.set_points_to_section());
 
-                //sort by descending from > 102 to 102, then ascending
+                //sort by descending from > 102 to 102, then deleted sections by length, then ascending
                 point_sections.sort((a, b)=>{
                     if(a.coverage > 1.02 || b.coverage > 1.02){
                         return b.coverage - a.coverage;
