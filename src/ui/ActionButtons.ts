@@ -40,19 +40,26 @@ export class ActionButtons extends LitElement {
         const input = e.target as HTMLInputElement;
         this.max_distance = parseFloat(input.value);
     }
+    
+    on_clear_selections(e: Event){
+        const really_clear = window.confirm("Clear all point associations (this action is permenant)");
+        if(really_clear){
+            this.dispatchEvent(new CustomEvent("clear-selections"));
+        }
+    }
 
     render() {
         return html`
-            <button @click=${()=>this.on_load_shapefiles()}>Load Shapefile</button>
-            <button @click=${()=>this.on_save()}>Save Changes</button>
+            <button @click=${this.on_load_shapefiles}>Load Shapefile</button>
+            <button @click=${this.on_save}>Save Changes</button>
             <div>
-                <button @click=${()=>this.on_assign_sections()}>Auto Assign Sections</button>
+                <button @click=${this.on_assign_sections}>Auto Assign Sections</button>
                 <div>Minimum Coverage<input type="number" @change=${this.min_coverage_change} min=0 max=100 value=${this.min_coverage}>%</div>
                 <div>Maximum Distance<input type="number" @change=${this.max_dist_change} min=0 value=${this.max_distance}>m</div>
                 <div>Point: ${this.points_shapefile?.name || "No Points Shapefile"}</div>
                 <div>Sections: ${this.sections_shapefile?.name || "No Sections Shapefile"}</div>
             </div>
-
+            <button @click=${this.on_clear_selections}>Clear Selections</button>
         `
     }
 

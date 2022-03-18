@@ -7,7 +7,8 @@ import { LitElement, html, css } from "lit";
 import { SelectionElement } from "./ui/SelectorArray";
 import { ActionButtons } from "./ui/ActionButtons";
 import { get_folder } from "./FileHandling";
-import { DbfFeature, load_shapefiles, PointSection, Shapefile } from "./Shapefile";
+import { DbfFeature, load_shapefiles, Shapefile } from "./Shapefile";
+import { PointSection } from "./PointSection";
 import { ShapefileList } from "./ui/ShapefileList";
 import { PointSelector } from "./ui/PointSelector";
 import { SectionArray } from "./ui/SectionArray";
@@ -96,13 +97,16 @@ export class App extends LitElement{
         this.action_buttons.addEventListener("save-changes", ()=>{
             this.shapefiles.forEach(shp=>shp.save());
         });
+        this.action_buttons.addEventListener("clear-selections", ()=>{
+            this.shapefiles.forEach(s=>s.clear_selections());
+            this.section_array.sections = [];
+        });
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
             const {points, sections, min_coverage, max_dist} = e.detail;
             if(points && sections){
                 const point_sections = (points as Shapefile).identify_section_associations(sections, max_dist);
-                const low_coverage = point_sections.filter(p=>p.coverage < min_coverage);
-                const high_coverage = point_sections.filter(p=>p.coverage >= min_coverage);
-                low_coverage.forEach(l=>l.points[0]?.parent_shapefile.set_deleted_section(l));
+                point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>s.set_points_deleted());
+                point_sections.filter(p=>p.coverage >= min_coverage).forEach(s=>s.set_points_to_section());
 
                 //sort by descending from >100 to 100, then ascending
                 point_sections.sort((a, b)=>{
@@ -113,6 +117,7 @@ export class App extends LitElement{
                     }
                 });
                 this.section_array.sections = point_sections;
+                (points as Shapefile).restyle_all();
             } else {
                 alert("Point and section shapefiles not loaded");
             }

@@ -1,6 +1,6 @@
 import GeoJSON from "ol/format/GeoJSON";
 import { Feature } from "ol";
-import { Circle, Geometry, LineString, MultiLineString, Point } from "ol/geom";
+import { Circle, Geometry, Point } from "ol/geom";
 import proj4 from "proj4";
 import * as shapefile from "shapefile"
 import { extension_of } from "./FileHandling";
@@ -12,6 +12,7 @@ import VectorSource from "ol/source/Vector";
 import VectorImageLayer from "ol/layer/VectorImage";
 import { Color } from "ol/color";
 import { Coordinate, distance } from "ol/coordinate";
+import { PointSection } from "./PointSection";
 const dbf: { structure: (data: any[], meta?: any[])=> ArrayBuffer} = require("./dbf/index");
 
 /**
@@ -177,7 +178,7 @@ export class Shapefile {
     
     identify_section_associations(sections_file: Shapefile, max_dist: number): PointSection[] {
         const point_runs = new Map<String, DbfFeature[]>();
-        const rolling_width = 12;
+        const rolling_width = 20;
         const distance_tolerance = max_dist;
         this.features.forEach(f=>{
             let route = point_runs.get(f.dbf_properties.Route);
@@ -202,38 +203,49 @@ export class Shapefile {
                     dist: dist
                 };
             });
-    
-            let rolling_average: string[] = nearest.slice(0, rolling_width).map(f=>f.sec_id);
-    
-            for(let i = 0; i < rolling_width / 2; i++){
-                if(!run[i].dbf_properties.SectionID){
-                    const most_freq = this.most_frequent(rolling_average);
-    
-                    //only set the tails if they are part of the larger nearby section
-                    if(nearest[i].sec_id == most_freq && nearest[i].dist < distance_tolerance){
-                        run[i].dbf_properties.SectionID = most_freq;
-                    }
+            
+
+            const width = Math.min(rolling_width, run.length);
+
+            //integer value of half width
+            const i_width_2 = (width / 2) | 0;
+            let rolling_average: string[] = nearest.slice(0, width).map(f=>f.sec_id);
+            
+            let assignments: string[] = [];
+
+            for(let i = 0; i < i_width_2; i++){
+                const most_freq = this.most_frequent(rolling_average);
+
+                //only set the tails if they are part of the larger nearby section
+                if(nearest[i].sec_id == most_freq && nearest[i].dist < distance_tolerance){
+                    assignments.push(most_freq);
+                } else {
+                    assignments.push("");
                 }
             }
     
-            for(let i = rolling_width / 2; i < run.length - rolling_width/2; i++){
+            for(let i = i_width_2; i < run.length - i_width_2; i++){
                 rolling_average.splice(0,1);
-                rolling_average.push(nearest[i + ((rolling_width/2) | 0)].sec_id);
-                if(!run[i].dbf_properties.SectionID && nearest[i].dist < distance_tolerance){
-                    run[i].dbf_properties.SectionID = this.most_frequent(rolling_average);
+                rolling_average.push(nearest[i + i_width_2].sec_id);
+                if(nearest[i].dist < distance_tolerance){
+                    assignments.push(this.most_frequent(rolling_average));
+                } else {
+                    assignments.push("");
                 }
             }
             
-            for(let i = run.length - rolling_width/2; i < run.length; i++){
+            for(let i = run.length - i_width_2; i < run.length; i++){
                 const most_freq = this.most_frequent(rolling_average);
     
                 //only set the tails if they are part of the larger nearby section
                 if(nearest[i].sec_id == most_freq && nearest[i].dist < distance_tolerance){
-                    run[i].dbf_properties.SectionID = most_freq;
+                    assignments.push(most_freq);
+                } else {
+                    assignments.push("");
                 }
             }
 
-            PointSection.from_point_array(run, sections_file).forEach(f=>all.push(f));
+            PointSection.from_point_array(run, assignments, sections_file).flatMap(f=>f.trim()).forEach(f=>all.push(f));
         })
         this.modified = true;
         this.restyle_all();
@@ -459,6 +471,11 @@ export class Shapefile {
         this.set_deleted(section.points);
     }
 
+    clear_selections(){
+        this.features.forEach(f=>f.dbf_properties.SectionID = null);
+        this.restyle_all();
+    }
+
     associate_points(p1: DbfFeature, p2: DbfFeature, section: DbfFeature){
         if(!p1 || !p2 || p1.getGeometry().getType() != "Point" || p2.getGeometry().getType() != "Point"){
             throw new Error("Bad geometry types for p1, p2");
@@ -550,88 +567,3 @@ export class Shapefile {
     }
 }
 
-export class PointSection {
-    coverage: number;
-    section_id: string;
-    constructor(public points: DbfFeature[], public section: DbfFeature){
-        const len = this.length();
-        const sec_len = this.section_length();
-
-        if(sec_len == 0) {
-            this.coverage = 0;
-        } else {
-            this.coverage = len / sec_len;
-        }
-        this.section_id = section?.dbf_properties.UniqueID || "";
-    }
-
-    length(): number {
-        let pt = (this.points[0].getGeometry() as Point).getFlatCoordinates();
-        let dist = 0;
-
-        for(const point of this.points){
-            const coord = (point.getGeometry() as Point).getFlatCoordinates();
-            dist += distance(coord, pt);
-            pt = coord;
-        }
-
-        return dist;
-    }
-
-    private nearest_segment(feat: DbfFeature, lines: MultiLineString): number{
-        const segs = lines.getLineStrings();
-        let min_dist = Infinity;
-        let best = 0;
-        const pt = (feat.getGeometry() as Point).getFlatCoordinates();
-        for(let i = 0; i < segs.length; i++){
-            const closest = segs[i].getClosestPoint(pt);
-            const dist = distance(pt, closest);
-            if(dist < min_dist){
-                min_dist = dist;
-                best = i;
-            }
-        }
-
-        return best;
-    }
-
-    section_length(): number {
-        if(!this.section) return 0;
-        if(this.section.getGeometry().getType() == "LineString"){
-            const geo = this.section.getGeometry() as LineString;
-            return geo.getLength();
-        } else if(this.section.getGeometry().getType() == "MultiLineString") {
-            const geo = this.section.getGeometry() as MultiLineString;
-
-            let associated_segments = new Set<number>();
-            this.points.forEach(p=>associated_segments.add(this.nearest_segment(p, geo)));
-
-            return Array.from(associated_segments).reduce((sum,idx)=>sum + geo.getLineString(idx).getLength(), 0);
-        } else {
-            throw new Error(`unexpected geometry type for section: ${this.section.getGeometry().getType()}`)
-        }
-    }
-
-    static from_point_array(points: DbfFeature[], sections_file: Shapefile): PointSection[] {
-        let last_section_id = "";
-        let current_run: DbfFeature[] = [];
-        let sections: PointSection[] = [];
-        for(const pt of points){
-            if(pt.dbf_properties.SectionID != last_section_id){
-                if(current_run.length > 0){
-                    sections.push(new PointSection(current_run, sections_file.features.find(f=>f.dbf_properties.UniqueID == last_section_id)));
-                }
-                current_run = [];
-                last_section_id = pt.dbf_properties.SectionID;
-            }
-
-            current_run.push(pt);
-        }
-
-        if(current_run.length > 0){
-            sections.push(new PointSection(current_run, sections_file.features.find(f=>f.dbf_properties.UniqueID == last_section_id)));
-        }
-
-        return sections;
-    }
-}

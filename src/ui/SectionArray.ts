@@ -1,6 +1,6 @@
-import {css, html, LitElement } from "lit"
-import {customElement, property} from "lit/decorators.js"
-import { PointSection } from "../Shapefile";
+import { css, html, LitElement } from "lit"
+import { customElement, property} from "lit/decorators.js"
+import { PointSection } from "../PointSection";
 
 @customElement("point-fixer-array")
 export class SectionArray extends LitElement {
@@ -37,7 +37,7 @@ export class SectionArray extends LitElement {
             <div>Sections<br></div>
             ${this.sections.map(p=>
                 html`<div>
-                    <div>ID: ${p.section_id}; Covergae ${(p.coverage * 100).toPrecision(3)}%</div>
+                    <div>ID: ${p.section_id}; Coverage ${(p.coverage * 100).toPrecision(3)}%</div>
                     <button @click=${()=>this.on_focus_view(p)}>View</button>
                     <button @click=${()=>this.on_delete(p)}>Delete</button>
                     <button @click=${()=>this.on_resolve(p)}>Resolve</button>
