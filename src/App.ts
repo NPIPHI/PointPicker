@@ -130,6 +130,7 @@ export class App extends LitElement{
                     return a.point_secs.reduce((a,b)=>a+b.coverage, 0) - b.point_secs.reduce((a,b)=>a+b.coverage, 0)
                 })
                 this.section_array.sections = featuers_arr;
+                this.section_array.current_idx = 0;
                 (points as Shapefile).restyle_all();
             } else {
                 alert("Point and section shapefiles not loaded");
