@@ -102,7 +102,8 @@ export class App extends LitElement{
             this.section_array.sections = [];
         });
         this.action_buttons.addEventListener("export-csv", ()=>{
-            this.shapefiles.filter(s=>s.routes).forEach(s=>s.export_point_sections());
+            const section_file = this.action_buttons.sections_shapefile;
+            this.shapefiles.filter(s=>s.routes).forEach(s=>s.export_point_sections(section_file));
         })
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
             const {points, sections, min_coverage} = e.detail;

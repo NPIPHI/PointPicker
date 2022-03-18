@@ -568,7 +568,7 @@ export class Shapefile {
         return point_runs;
     }
 
-    async export_point_sections() {
+    async export_point_sections(sections_file: Shapefile) {
         if(this.routes){
             let sections: {features: DbfFeature[], section_id: string}[] = [];
             let runs = this.make_point_runs();
@@ -585,17 +585,25 @@ export class Shapefile {
                 sections.push({features: run.slice(last_end), section_id: run[run.length-1].dbf_properties.SectionID});
             });
 
-            const csv_header = "route, start_FIS, end_FIS, section_unique_id\n";
+            const section_props = sections_file.props;
+            const csv_header = ["route","start_FIS","end_FIS","start_station","end_station","section_id", ...section_props.map(s=>`section-${s}`)];
             const csv_rows = sections
             .filter(s=>s.section_id != "Deleted")
             .map(s=>{
                 const {features, section_id} = s;
                 const start = features[0];
                 const end = features[features.length-1];
-                return [start.dbf_properties.Route, start.dbf_properties.FIS_Count, end.dbf_properties.FIS_Count, section_id];
+                const section = sections_file.features.find(s=>s.dbf_properties.UniqueID == section_id);
+                return [start.dbf_properties.Route, 
+                    start.dbf_properties.FIS_Count, 
+                    end.dbf_properties.FIS_Count, 
+                    start.dbf_properties.AvgOfStati,
+                    end.dbf_properties.AvgOfStati,
+                    section_id,
+                    ...section_props.map(p=>section.dbf_properties[p])];
             });
 
-            const file_str = csv_header + csv_rows.map(r=>r.join(',')).join('\n');
+            const file_str = `${csv_header.join(',')}\n${csv_rows.map(r=>r.join(',')).join('\n')}`;
             const file = await window.showSaveFilePicker({suggestedName: `${this.name}_sections.csv`});
             const writeable = await file.createWritable();
             await writeable.write(file_str);
