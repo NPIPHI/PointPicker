@@ -1,16 +1,9 @@
 import { LitElement, html, css } from "lit";
 import { customElement, property } from "lit/decorators.js";
-@customElement("map-element")
-class MapElement extends LitElement {
-    render(){
-        return html``;
-    }
-}
 
 
 @customElement("main-window")
 export class MainWindow extends LitElement {
-    map = new MapElement();
     static css = css`
         #map {
             width: 100%;
@@ -82,7 +75,6 @@ export class MainWindow extends LitElement {
             <button id="save_button">Save Modifications</button>
             <button id="toggle_button">Toggle Thumbnail</button>
         </div>
-        ${this.map}
         <div id="name_selector">
             <selector-array id="shape_selector"></selector-array>
             <selector-array id="prop_selector"></selector-array>

@@ -11,7 +11,7 @@ import Fill from "ol/style/Fill";
 import VectorSource from "ol/source/Vector";
 import VectorImageLayer from "ol/layer/VectorImage";
 import { Color } from "ol/color";
-import { Coordinate, distance } from "ol/coordinate";
+import { distance } from "ol/coordinate";
 import { PointSection } from "./PointSection";
 const dbf: { structure: (data: any[], meta?: any[])=> ArrayBuffer} = require("./dbf/index");
 
@@ -29,7 +29,9 @@ async function load_projection(file: FileSystemFileHandle, dest_projection: stri
     return projection;
 }
 
-
+/**
+ * Feature with dbf data attached
+ */
 export type DbfFeature = Feature<Geometry> & { dbf_properties?: any, is_start_stop?: boolean, parent_shapefile: Shapefile }
 
 
@@ -38,7 +40,7 @@ export type DbfFeature = Feature<Geometry> & { dbf_properties?: any, is_start_st
  * @param filename Name of the shape file (not including .shp)
  * @param dest_projection Destination projection of the shape file
  * @param folder Folder containing the .shp, .prj and .dbf files
- * @returns an array of features from the shapefiles and an array of available properites on those features
+ * @returns shapefile object
  */
 async function load_shapefile(filename: string, dest_projection: string, folder: FileSystemHandle[]): Promise<Shapefile> {
     const proj_file = <FileSystemFileHandle>folder.find(f => f.name == `${filename}.prj`);
@@ -110,7 +112,7 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
  * Loads all shapefiles from a folder
  * @param dest_projection destination projection of loaded shape files
  * @param folder folder to load shapefiles from
- * @returns array of shapefiles and array of available properites
+ * @returns array of shapefiles
  */
 export async function load_shapefiles(dest_projection: string, folder: FileSystemHandle[]): Promise<Shapefile[]> {
     const shape_file_names = folder.filter(f => {
@@ -126,7 +128,9 @@ export async function load_shapefiles(dest_projection: string, folder: FileSyste
     }));
 }
 
-
+/**
+ * Represents the set of all features from a shapefile as well as its associated openlayers objects
+ */
 export class Shapefile {
     layer: VectorImageLayer<VectorSource>;
     vector_source: VectorSource;
@@ -135,6 +139,13 @@ export class Shapefile {
     private line_width: number;
     private highlighted: DbfFeature[] = [];
     private modified: boolean = false;
+    /**
+     * Construct shapefile
+     * @param name name of the shapefile
+     * @param features array of features
+     * @param props array of available dbf properties on those features
+     * @param dbf_file dbf file (so that the shapefile can save changes to dbf features)
+     */
     constructor(public name : string, public features: DbfFeature[], public props: string[], private dbf_file: FileSystemFileHandle){
         features.forEach(f=>f.parent_shapefile=this);
         this.line_width = 4;
@@ -163,6 +174,12 @@ export class Shapefile {
             this.routes = null;
         }
     }
+
+    /**
+     * Get the most frequent element
+     * @param strs array of strings
+     * @returns most frequent string in strs
+     */
     private most_frequent(strs: string[]): string {
         let count = new Map<string, number>();
         strs.forEach(s=>count.set(s, (count.get(s) || 0) + 1));
@@ -176,6 +193,14 @@ export class Shapefile {
         }
     }
     
+    /**
+     * Identifies which contiguous runs of points correspond to what features of the given sections file
+     * 
+     * Runs of points that don't correspond to any feature are put in PointSections with section set to null
+     * @param sections_file shapefile containing sections to match against
+     * @param max_dist maximum distance allowed for a point to be from its associated feature
+     * @returns array of point sections containging point associations
+     */
     identify_section_associations(sections_file: Shapefile, max_dist: number): PointSection[] {
         const point_runs = this.make_point_runs();
         const distance_tolerance = max_dist;
@@ -204,6 +229,14 @@ export class Shapefile {
             
             let assignments: string[] = [];
 
+
+            /* the denoising algorithm takes a rolling window of points and sets each point's associated
+             * section to the most section feature in the rolling window
+             * 
+             * the tails of the run are handeled specially
+             * working from the ends in, if a point doesn't match the rolling average then it is marked as being unassociated
+             * once a point that does match the rolling average is found, the normal denoising algorithm resumes
+             */
             let in_tail = true;
             for(let i = 0; i < i_width_2; i++){
                 const most_freq = this.most_frequent(rolling_average);
@@ -244,12 +277,16 @@ export class Shapefile {
 
             PointSection.from_point_array(run, assignments, sections_file).flatMap(f=>f.trim()).forEach(f=>all.push(f));
         })
-        this.modified = true;
-        this.restyle_all();
 
         return all;
     }
     
+    /**
+     * Get the text to display given the current visible props
+     * @param feature feature to style
+     * @param visible_props list of visible props on that feature
+     * @returns Text to display
+     */
     private text_of(feature: DbfFeature, visible_props: string[]){
         let text = visible_props.map(name => {
             const val = feature.dbf_properties[name];
@@ -271,6 +308,11 @@ export class Shapefile {
         })
     }
 
+    /**
+     * Creates the focused style for a given feature, this style is used when the user clicks view on the sections menu
+     * @param feature Feature to style
+     * @returns Focused style of given feature
+     */
     private focus_style(feature: DbfFeature): Style {
         const geo = feature.getGeometry();
         if(geo.getType() == "Point"){
@@ -324,6 +366,12 @@ export class Shapefile {
         }
     }
 
+    /**
+     * Creates the highlight style for a given feature, this style is used when the user clicks on points or sections
+     * @param feature Feature to style
+     * @returns Highlight style of given feature
+     */
+
     private highlight_style(feature: DbfFeature): Style {
         const geo = feature.getGeometry();
         if(geo.getType() == "Point"){
@@ -350,6 +398,11 @@ export class Shapefile {
 
     static section_color_map: Map<string, Color> = new Map();
 
+    /**
+     * Get the display color associated with a certin section id
+     * @param sectionid section to get color for
+     * @returns Color associated with section
+     */
     private color_of_section(sectionid: string){
         const existing = Shapefile.section_color_map.get(sectionid);
         if(existing) return existing;
@@ -359,6 +412,11 @@ export class Shapefile {
         return new_color;
     }
 
+    /**
+     * Base style of features that are not highlighted or focused
+     * @param feature feature to style
+     * @returns Base style of feature
+     */
     private base_style(feature: DbfFeature): Style {
         const geo = feature.getGeometry();
         if(geo.getType() == "Point"){
@@ -411,6 +469,11 @@ export class Shapefile {
         }
     }
 
+    /**
+     * Restyles all features with the current style set by the features section id and highlighted status
+     * 
+     * Necessary when changing section ids of features by not calling set style on each changed feature
+     */
     restyle_all(){
         const highlighted_set = new Set(this.highlighted);
         if(this.routes){
@@ -475,6 +538,13 @@ export class Shapefile {
         this.restyle_all();
     }
 
+
+    /**
+     * Assocaiate all points between a given start and end point with the given feature
+     * @param p1 Start point
+     * @param p2 End point
+     * @param section Section to associate points with
+     */
     associate_points(p1: DbfFeature, p2: DbfFeature, section: DbfFeature){
         if(!p1 || !p2 || p1.getGeometry().getType() != "Point" || p2.getGeometry().getType() != "Point"){
             throw new Error("Bad geometry types for p1, p2");
@@ -491,6 +561,12 @@ export class Shapefile {
         this.modified = true;
     }
 
+    /**
+     * Get an array of all points between p1 and p2 (inclusive)
+     * @param p1 start point
+     * @param p2 end point
+     * @returns array of points between p1 and p2
+     */
     points_between(p1: DbfFeature, p2: DbfFeature): DbfFeature[]{
         if(p1 && p2 && p1.dbf_properties.Route == p2.dbf_properties.Route){
             const min_fis = Math.min(p1.dbf_properties.FIS_Count, p2.dbf_properties.FIS_Count);
@@ -509,7 +585,11 @@ export class Shapefile {
         this.highlighted = [];
     }
 
-    highlight_point_section(section: PointSection){
+    /**
+     * Set the focus style for all points associated with a certain section
+     * @param section section to highlight
+     */
+    apply_focus_style_on_section(section: PointSection){
         section.points.forEach(p=>{
             if(p.parent_shapefile != this) new Error("Highlight of points that don't belong to current shapefile");
         });
@@ -520,6 +600,14 @@ export class Shapefile {
         });
     }
 
+
+    /**
+     * Highlights all points between p1 and p2 inclusive
+     * 
+     * Clears any existing highlights
+     * @param p1 start point
+     * @param p2 end point
+     */
     highlight_point_selection(p1: DbfFeature, p2: DbfFeature){
         if((p1 && (p1.parent_shapefile != this)) || (p2 && (p2.parent_shapefile != this))){
             throw new Error("Highlight of points that don't belong to current shapefile");
@@ -540,6 +628,11 @@ export class Shapefile {
         });
     }
 
+    /**
+     * Highlights section feature
+     * @param section section to highlight
+     */
+
     highlight_section(section: DbfFeature | null){
         if(section && (section.parent_shapefile != this)){
             throw new Error("Highlight of section that doesn't belong to current shapefile");
@@ -552,6 +645,11 @@ export class Shapefile {
             section.setStyle([this.highlight_style(section), this.text_style(section, this.visible_props)]);
         }   
     }
+
+    /**
+     * Splits all features by associated route
+     * @returns map from route ids to features associated with that route
+     */
 
     private make_point_runs() : Map<string, DbfFeature[]>{
         const point_runs = new Map<string, DbfFeature[]>();
@@ -568,6 +666,10 @@ export class Shapefile {
         return point_runs;
     }
 
+    /**
+     * Export point sections to csv
+     * @param sections_file file containing section information
+     */
     async export_point_sections(sections_file: Shapefile) {
         if(this.routes){
             let sections: {features: DbfFeature[], section_id: string}[] = [];
@@ -613,6 +715,9 @@ export class Shapefile {
         }
     }
 
+    /**
+     * Save modified dbf properties (section id)
+     */
     async save() {
         if(this.modified){
             const dat = dbf.structure(this.features.map(f=>f.dbf_properties));

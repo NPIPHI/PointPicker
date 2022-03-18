@@ -15,6 +15,9 @@ import { SectionArray, SectionInfo } from "./ui/SectionArray";
 import { LineString, MultiLineString, Point } from "ol/geom";
 import { distance } from "ol/coordinate";
 
+/**
+ * Class that represents the state of the whole app
+ */
 @customElement("my-app")
 export class App extends LitElement{
       
@@ -39,6 +42,8 @@ export class App extends LitElement{
     action_buttons: ActionButtons;
     section_array: SectionArray;
     shapefiles: Shapefile[] = [];
+
+
     constructor(){
         super();
         this.map = new OlMap({
@@ -54,21 +59,34 @@ export class App extends LitElement{
                 zoom: 1
             })
         });
+
+
+        // Handle click events on map by forwarding them to the point selector element
         this.map.on("click", evt=>{
             this.point_selector.map_click(this.map.getFeaturesAtPixel(evt.pixel) as DbfFeature[]);
-        })
+        });
+
         this.shapefile_selector = new ShapefileList();
+
+        // Handle updates to the visible property list
         this.shapefile_selector.addEventListener("shapefile-prop-update", (evt: CustomEvent)=>{
             this.update_visible_props(evt.detail.shapefile, evt.detail.new_props);
         });
+
+        // Handle updates to the visible routes list
         this.shapefile_selector.addEventListener("shapefile-route-update", (evt: CustomEvent)=>{
             this.update_visible_routes(evt.detail.shapefile, evt.detail.new_routes);
         });
+
+        // Handle updates to the visible shapefile list
         this.shapefile_selector.addEventListener("shapefile-visible-update", (evt: CustomEvent)=>{
             this.set_layer_visible(evt.detail.shapefile, evt.detail.visible);
         });
+
         this.action_buttons = new ActionButtons();
         this.point_selector = new PointSelector();
+
+        // Handle updates to the current pending point selection
         this.point_selector.addEventListener("selection-update", (evt: CustomEvent)=>{
             const {point_shp, section_shp, start_point, end_point, section} = evt.detail;
             point_shp?.clear_highlighted();
@@ -78,6 +96,7 @@ export class App extends LitElement{
             section_shp?.highlight_section(section);
         });
 
+        // Handle the "Associate Points" button
         this.point_selector.addEventListener("associate-points", (evt: CustomEvent)=>{
             const {start_point, end_point, section, point_shp, section_shp} = evt.detail;
             point_shp.associate_points(start_point, end_point, section);
@@ -85,35 +104,50 @@ export class App extends LitElement{
             section_shp.clear_highlighted();
         });
 
+        // Handle the "Delete Points" button
         this.point_selector.addEventListener("delete-points", (evt: CustomEvent)=>{
             let {start_point, end_point, point_shp} = evt.detail;
 
-            //if the uesr only selected one point, set the end point to the start point
             point_shp.set_deleted(point_shp.points_between(start_point, end_point));
             point_shp.clear_highlighted();
         });
 
+        // Handle the "Load Shapefile" button 
         this.action_buttons.addEventListener("load-shapefiles", ()=>this.load_shapefiles());
+
+        // Handle the "Save Changes" button
         this.action_buttons.addEventListener("save-changes", ()=>{
             this.shapefiles.forEach(shp=>shp.save());
         });
+
+        // Handle the "Clear Associations" button (after user clicks confirm)
         this.action_buttons.addEventListener("clear-selections", ()=>{
             this.shapefiles.forEach(s=>s.clear_selections());
             this.section_array.sections = [];
         });
+
+        // Handle the "Export" button
         this.action_buttons.addEventListener("export-csv", ()=>{
             const section_file = this.action_buttons.sections_shapefile;
             this.shapefiles.filter(s=>s.routes).forEach(s=>s.export_point_sections(section_file));
         })
+
+        // Handle the "Auto assign sections" button
         this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
             const {points, sections, min_coverage} = e.detail;
             if(points && sections){
                 //hard cutoff at 50 meters from nearest feature
                 const max_dist = 50;
                 const point_sections = (points as Shapefile).identify_section_associations(sections, max_dist);
+
+                // delete low coverage sections
                 point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>{s.set_points_deleted()});
+
+                // mark high coverage sections
                 point_sections.filter(p=>p.coverage >= min_coverage).forEach(s=>s.set_points_to_section());
 
+
+                // associate each section with all the point sections that correspond to it
                 const feature_map = new Map<DbfFeature, PointSection[]>();
                 (sections as Shapefile).features.forEach(f=>feature_map.set(f, []));
                 point_sections.forEach(sec=>{
@@ -129,6 +163,8 @@ export class App extends LitElement{
                 featuers_arr.sort((a,b)=>{
                     return a.point_secs.reduce((a,b)=>a+b.coverage, 0) - b.point_secs.reduce((a,b)=>a+b.coverage, 0)
                 })
+
+                // update the section picker ui
                 this.section_array.sections = featuers_arr;
                 this.section_array.current_idx = 0;
                 (points as Shapefile).restyle_all();
@@ -139,11 +175,12 @@ export class App extends LitElement{
 
         this.section_array = new SectionArray();
 
+        // handle the "View" button on the section picker ui
         this.section_array.addEventListener("focus-points", (evt: CustomEvent)=>{
             const pts : SectionInfo = evt.detail;
             pts.point_secs[0]?.points[0]?.parent_shapefile.clear_highlighted();
             pts.point_secs.forEach(sec=>{
-                sec.points[0]?.parent_shapefile.highlight_point_section(sec);
+                sec.points[0]?.parent_shapefile.apply_focus_style_on_section(sec);
             })
 
             pts.feature.parent_shapefile.clear_highlighted();
@@ -154,6 +191,11 @@ export class App extends LitElement{
         })
     }
 
+    /**
+     * Create a view to focus a specific feature
+     * @param f Feature to view
+     * @returns View focusing the passed feature
+     */
     private view_of(f: DbfFeature): View {
         const geo = f.getGeometry();
         if(geo.getType() == "Point"){
@@ -220,6 +262,9 @@ export class App extends LitElement{
         this.shapefiles.push(shape);
     }
 
+    /**
+     * Load all shapefiles for a user selected folder into the app
+     */
     private async load_shapefiles(){
         const folder = await get_folder();
         const shapefiles = await load_shapefiles("EPSG:3857", folder);

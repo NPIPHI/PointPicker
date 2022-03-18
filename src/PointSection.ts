@@ -2,7 +2,9 @@ import { LineString, MultiLineString, Point } from "ol/geom";
 import { distance } from "ol/coordinate";
 import { DbfFeature, Shapefile } from "./Shapefile";
 
-
+/**
+ * Represents a contiguous run of points from the same route that all correspond to the same section
+ */
 export class PointSection {
     coverage: number;
     section_id: string;
@@ -26,6 +28,10 @@ export class PointSection {
         this.points.forEach(p=>{if(!p.dbf_properties.SectionID) p.dbf_properties.SectionID = this.section_id});
     }
 
+    /**
+     * Get the length of the contained points
+     * @returns length in projection units (usually meters)
+     */
     length(): number {
         if(this.points.length == 0) return 0;
         let pt = (this.points[0].getGeometry() as Point).getFlatCoordinates();
@@ -40,6 +46,17 @@ export class PointSection {
         return dist;
     }
 
+    /**
+     * Splits the point section into sections
+     * 
+     * One section will hold the points that belong to the section according to a segmenting algorithm
+     * 
+     * Other sections will hold the tails of the point section that were determined to not belong to the section
+     * 
+     * The segmenting algorithm is designed to determine between features like roundabouts and cul de sacs which should be kept
+     * and features like points running past the end of the section which should be discarded
+     * @returns New point sections split according to the segmenting algorithm
+     */
     trim(): PointSection[] {
         if(!this.section) return [this];
 
@@ -59,11 +76,6 @@ export class PointSection {
             point_distances.push(distance(p1,p2));
         }
 
-
-
-        // const avg = segment_distances.reduce((a,b)=>a+b) / segment_distances.length;
-
-        // const std = Math.sqrt(segment_distances.reduce((sum, v)=>(v-avg)*(v-avg)) / segment_distances.length);
 
         let right_trail = [];
 
@@ -87,14 +99,16 @@ export class PointSection {
             }
         }
 
-        if(right_trail.length == 0 && left_trail.length == 0){
-            return [this];
-        } else {
-            const middle = this.points.slice(left_trail.length, this.points.length - right_trail.length);
-            return [new PointSection(left_trail, null), new PointSection(middle, this.section), new PointSection(right_trail, null)].filter(f=>f.points.length > 0);
-        }
+        const middle = this.points.slice(left_trail.length, this.points.length - right_trail.length);
+        return [new PointSection(left_trail, null), new PointSection(middle, this.section), new PointSection(right_trail, null)].filter(f=>f.points.length > 0);
     }
 
+    /**
+     * Determine the nearest part of a multi line string to a given point
+     * @param feat point
+     * @param lines multi line string to check line segments against
+     * @returns index of nearest line segment
+     */
     private nearest_segment(feat: DbfFeature, lines: MultiLineString): number {
         const segs = lines.getLineStrings();
         let min_dist = Infinity;
@@ -112,6 +126,10 @@ export class PointSection {
         return best;
     }
 
+    /**
+     * Get the length of the associated section
+     * @returns Length of section or 0 if section is null
+     */
     section_length(): number {
         if (!this.section) return 0;
         if (this.section.getGeometry().getType() == "LineString") {
@@ -129,6 +147,13 @@ export class PointSection {
         }
     }
 
+    /**
+     * Split array of points into sections of points with the same section id
+     * @param points contigous array of points correspoinding to section assingments
+     * @param section_assingments sectionid each point matches against
+     * @param sections_file shapefile containing the sections
+     * @returns array of PointSection corresponding to continuous runs of points with the same section assingmnet
+     */
     static from_point_array(points: DbfFeature[], section_assingments: string[], sections_file: Shapefile): PointSection[] {
         if(points.length != section_assingments.length) throw new Error("point and assingment array length mismatch");
         let last_section_id = "";
