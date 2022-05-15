@@ -19,6 +19,12 @@ module.exports = {
     filename: 'bundle.js',
     path: path.resolve(__dirname, 'public'),
   },
+  // optimization: {
+  //   minimize: false
+  // },
   
-  mode: "development",
+  mode: "production",
+  experiments: {
+    asyncWebAssembly: true,
+  }
 };

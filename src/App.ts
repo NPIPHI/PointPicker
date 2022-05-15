@@ -33,8 +33,9 @@ export class App extends LitElement{
 
         div {
             padding: 5px;
-        }
-    `
+        }`;
+
+    
 
     map : OlMap;
     shapefile_selector: ShapefileList;
@@ -133,12 +134,12 @@ export class App extends LitElement{
         })
 
         // Handle the "Auto assign sections" button
-        this.action_buttons.addEventListener("assign-sections", (e: CustomEvent)=>{
+        this.action_buttons.addEventListener("assign-sections", async (e: CustomEvent)=>{
             const {points, sections, min_coverage} = e.detail;
             if(points && sections){
                 //hard cutoff at 50 meters from nearest feature
                 const max_dist = 50;
-                const point_sections = (points as Shapefile).identify_section_associations(sections, max_dist);
+                const point_sections = await (points as Shapefile).identify_section_associations(sections, max_dist);
 
                 // delete low coverage sections
                 point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>{s.set_points_deleted()});

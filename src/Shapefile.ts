@@ -13,6 +13,8 @@ import VectorImageLayer from "ol/layer/VectorImage";
 import { Color } from "ol/color";
 import { distance } from "ol/coordinate";
 import { PointSection } from "./PointSection";
+import { nearest_segments } from "./Rstar";
+
 const dbf: { structure: (data: any[], meta?: any[])=> ArrayBuffer} = require("./dbf/index");
 
 /**
@@ -33,8 +35,6 @@ async function load_projection(file: FileSystemFileHandle, dest_projection: stri
  * Feature with dbf data attached
  */
 export type DbfFeature = Feature<Geometry> & { dbf_properties?: any, is_start_stop?: boolean, parent_shapefile: Shapefile }
-
-
 /**
  * Loads one shape and associated metadata from a folder
  * @param filename Name of the shape file (not including .shp)
@@ -201,7 +201,9 @@ export class Shapefile {
      * @param max_dist maximum distance allowed for a point to be from its associated feature
      * @returns array of point sections containging point associations
      */
-    identify_section_associations(sections_file: Shapefile, max_dist: number): PointSection[] {
+    async identify_section_associations(sections_file: Shapefile, max_dist: number): Promise<PointSection[]> {
+
+        const rstar_associations = await nearest_segments(this, sections_file);
         const point_runs = this.make_point_runs();
         const distance_tolerance = max_dist;
         const rolling_width = 20;
@@ -210,12 +212,9 @@ export class Shapefile {
     
         point_runs.forEach((run, route)=>{
             const nearest = run.map(f=>{
-                const coords = (f.getGeometry() as Point).getFlatCoordinates();
-                const nearest = <DbfFeature>sections_file.vector_source.getClosestFeatureToCoordinate(coords);
-                const dist_pt = nearest.getGeometry().getClosestPoint(coords);
-                const dist = distance(dist_pt, coords);
+                const {seg, dist} = rstar_associations.get(f);
                 return {
-                    sec_id: nearest.dbf_properties.UniqueID,
+                    sec_id: seg.dbf_properties.UniqueID,
                     dist: dist
                 };
             });
@@ -277,7 +276,7 @@ export class Shapefile {
 
             PointSection.from_point_array(run, assignments, sections_file).flatMap(f=>f.trim()).forEach(f=>all.push(f));
         })
-
+        
         return all;
     }
     
@@ -536,6 +535,7 @@ export class Shapefile {
     clear_selections(){
         this.features.forEach(f=>f.dbf_properties.SectionID = null);
         this.restyle_all();
+        this.modified = true;
     }
 
 

@@ -2,10 +2,10 @@
     "compilerOptions": {
         "lib": ["es2020", "DOM"],
         "module": "commonjs",
-        "target": "esnext",
+        "target": "es2020",
         "noImplicitAny": true,
-        "outDir": "dist",
-        "sourceMap": true,   
+        "outDir": "public",
+        // "sourceMap": true,   
         "declaration": false,
         "moduleResolution": "node",
         "esModuleInterop": true,
@@ -13,5 +13,5 @@
         "experimentalDecorators": true,
         "useDefineForClassFields": false,
     },
-    "exclude": ["webpack*", "dist"],
+    "exclude": ["webpack*", "public"],
   }
