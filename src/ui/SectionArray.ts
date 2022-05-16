@@ -32,18 +32,25 @@ export class SectionArray extends LitElement {
         .resolved {
             background-color: lightgreen;
         }
-
-        .resolved .resolve_button {
-            opacity: 0.3;
-        }
     `
 
-    on_focus_view(pts: SectionInfo){
+    private on_focus_view(pts: SectionInfo){
         this.dispatchEvent(new CustomEvent("focus-points", {detail: pts}));
     }
 
-    on_resolve(pts: SectionInfo){
+    private on_resolve(pts: SectionInfo){
         pts.is_resolved = true;
+        this.current_idx = this.sections.indexOf(pts) + 1;
+        pts.feature.parent_shapefile.set_resolved(pts.feature);
+        if(this.current_idx < this.sections.length){
+            this.dispatchEvent(new CustomEvent("focus-points", {detail: this.sections[this.current_idx]}));
+        }
+        this.requestUpdate();
+    }
+
+    private on_unresolve(pts: SectionInfo){
+        pts.is_resolved = false;
+        pts.feature.parent_shapefile.set_unresolved(pts.feature);
         this.current_idx = this.sections.indexOf(pts) + 1;
         if(this.current_idx < this.sections.length){
             this.dispatchEvent(new CustomEvent("focus-points", {detail: this.sections[this.current_idx]}));
@@ -78,7 +85,11 @@ export class SectionArray extends LitElement {
                 html`<div class=${p.is_resolved ? "resolved" : ""} id=${i}>
                     <div>ID: ${p.feature.dbf_properties.NAME}; Coverage ${(p.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100).toPrecision(3)}%</div>
                     <button @click=${()=>this.on_focus_view(p)}>View ${i == this.current_idx ? "(v)" : ""}</button>
-                    <button class="resolve_button" @click=${()=>this.on_resolve(p)}>Resolve ${i == this.current_idx ? "(r)" : ""}</button>
+                    ${p.is_resolved ? 
+                        html`<button class="unresolve_button" @click=${()=>this.on_unresolve(p)}>Unresolve</button>`
+                    :
+                        html`<button class="resolve_button" @click=${()=>this.on_resolve(p)}>Resolve ${i == this.current_idx ? "(r)" : ""}</button>`
+                    }
                 </div>`
                 )}
         </div>

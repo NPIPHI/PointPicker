@@ -11,7 +11,6 @@ import Fill from "ol/style/Fill";
 import VectorSource from "ol/source/Vector";
 import VectorImageLayer from "ol/layer/VectorImage";
 import { Color } from "ol/color";
-import { distance } from "ol/coordinate";
 import { PointSection } from "./PointSection";
 import { nearest_segments } from "./Rstar";
 
@@ -139,6 +138,7 @@ export class Shapefile {
     private line_width: number;
     private highlighted: DbfFeature[] = [];
     private modified: boolean = false;
+    private dirty_callback: ()=>void = ()=>{};
     /**
      * Construct shapefile
      * @param name name of the shapefile
@@ -175,6 +175,25 @@ export class Shapefile {
         }
     }
 
+    set_unsaved() {
+        if(!this.modified){
+            this.modified = true;
+            this.dirty_callback();
+        }
+    }
+
+    set_saved() {
+        this.modified = false;
+    }
+
+    is_unsaved() {
+        return this.modified;
+    }
+
+    set_dirty_callback(callback: () => void) {
+        this.dirty_callback = callback;
+    }
+
     /**
      * Get the most frequent element
      * @param strs array of strings
@@ -193,6 +212,38 @@ export class Shapefile {
         }
     }
     
+    make_point_sections(section_file: Shapefile): PointSection[] {
+        return Array.from(this.make_point_routes().entries()).flatMap(([route, features])=>
+            PointSection.from_point_array(features, features.map(f=>f.dbf_properties.SectionID), section_file)
+        )
+    }
+
+    make_partial_point_sections(sections: DbfFeature[], section_file: Shapefile): PointSection[] {
+
+        const sections_set = new Set<string>();
+        sections.forEach(s=>sections_set.add(s.dbf_properties.UniqueID));
+        return Array.from(this.make_point_routes().entries()).flatMap(([route, features])=>{
+            if(features.some(f=>sections_set.has(f.dbf_properties.SectionID))) {
+                return PointSection.from_point_array(features, features.map(f=>f.dbf_properties.SectionID), section_file);
+            } else {
+                return [];
+            }
+        })
+    }
+
+
+    set_unresolved(feature: DbfFeature) {
+        if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
+        feature.dbf_properties.is_resolved = false;
+        this.set_unsaved();
+    }
+
+    set_resolved(feature: DbfFeature) {
+        if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
+        feature.dbf_properties.is_resolved = true;
+        this.set_unsaved();
+    }
+
     /**
      * Identifies which contiguous runs of points correspond to what features of the given sections file
      * 
@@ -204,9 +255,9 @@ export class Shapefile {
     async identify_section_associations(sections_file: Shapefile, max_dist: number): Promise<PointSection[]> {
 
         const rstar_associations = await nearest_segments(this, sections_file);
-        const point_runs = this.make_point_runs();
+        const point_runs = this.make_point_routes();
         const distance_tolerance = max_dist;
-        const rolling_width = 20;
+        const rolling_width = 10;
 
         let all: PointSection[] = [];
     
@@ -490,9 +541,8 @@ export class Shapefile {
         const highlighted_set = new Set(this.highlighted);
         if(this.routes){
             let route_set = new Set(this.routes.visible);
-            this.for_each_async(this.features,
-            // this.features.forEach(
-                f=>{
+            // this.for_each_async(this.features, f=>{
+            this.features.forEach(f=>{
                 if(route_set.has(f.dbf_properties.Route)){
                     if(highlighted_set.has(f)){
                         f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)])
@@ -504,9 +554,8 @@ export class Shapefile {
                 }
             });
         } else {
-            this.for_each_async(this.features, 
-            // this.features.forEach(f=>{
-                f=>{
+            // this.for_each_async(this.features, f=>{ 
+            this.features.forEach(f=>{
                 if(highlighted_set.has(f)){
                     f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)])
                 } else {
@@ -541,7 +590,7 @@ export class Shapefile {
             p.is_start_stop = false;
             p.setStyle([this.base_style(p), this.text_style(p, this.visible_props)])
         });
-        this.modified = true;
+        this.set_unsaved();
     }
 
     set_deleted_section(section: PointSection){
@@ -551,8 +600,10 @@ export class Shapefile {
 
     clear_selections(){
         this.features.forEach(f=>f.dbf_properties.SectionID = null);
+        this.features.forEach(f=>f.dbf_properties.is_resolved = null);
+
         this.restyle_all();
-        this.modified = true;
+        this.set_unsaved();
     }
 
 
@@ -575,7 +626,7 @@ export class Shapefile {
         });
         p1.is_start_stop = true;
         p2.is_start_stop = true;
-        this.modified = true;
+        this.set_unsaved();
     }
 
     /**
@@ -668,7 +719,7 @@ export class Shapefile {
      * @returns map from route ids to features associated with that route
      */
 
-    private make_point_runs() : Map<string, DbfFeature[]>{
+    private make_point_routes() : Map<string, DbfFeature[]>{
         const point_runs = new Map<string, DbfFeature[]>();
         this.features.forEach(f=>{
             let route = point_runs.get(f.dbf_properties.Route);
@@ -690,7 +741,7 @@ export class Shapefile {
     async export_point_sections(sections_file: Shapefile) {
         if(this.routes){
             let sections: {features: DbfFeature[], section_id: string}[] = [];
-            let runs = this.make_point_runs();
+            let runs = this.make_point_routes();
 
             runs.forEach((run, route)=>{
                 let last_end = 0;
@@ -736,12 +787,12 @@ export class Shapefile {
      * Save modified dbf properties (section id)
      */
     async save() {
-        if(this.modified){
-            const dat = dbf.structure(this.features.map(f=>f.dbf_properties));
+        if(this.is_unsaved()){
             const writeable = await this.dbf_file.createWritable();
+            const dat = dbf.structure(this.features.map(f=>f.dbf_properties));
             writeable.write(dat);
             await writeable.close();
-            return true;
+            this.set_saved();
         }
     }
 }

@@ -100,25 +100,44 @@ export class App extends LitElement{
         // Handle the "Associate Points" button
         this.point_selector.addEventListener("associate-points", (evt: CustomEvent)=>{
             const {start_point, end_point, section, point_shp, section_shp} = evt.detail;
+            const effected_sections = new Set<string>();
+            effected_sections.add(section.dbf_properties.UniqueID);
+            (point_shp as Shapefile).points_between(start_point, end_point).forEach(p=>effected_sections.add(p.dbf_properties.SectionID));
+
             point_shp.associate_points(start_point, end_point, section);
             point_shp.clear_highlighted();
             section_shp.clear_highlighted();
+
+
+            this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.dbf_properties.UniqueID)));
+            // this.refresh_section_list(true);
         });
 
         // Handle the "Delete Points" button
         this.point_selector.addEventListener("delete-points", (evt: CustomEvent)=>{
             let {start_point, end_point, point_shp} = evt.detail;
+            const section_shp = this.action_buttons.sections_shapefile;
+
+            const effected_sections = new Set<string>();
+            (point_shp as Shapefile).points_between(start_point, end_point).forEach(p=>effected_sections.add(p.dbf_properties.SectionID));
+
 
             point_shp.set_deleted(point_shp.points_between(start_point, end_point));
             point_shp.clear_highlighted();
+            this.refresh_section_list(true);
+
+
+            this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.dbf_properties.UniqueID)));
         });
 
         // Handle the "Load Shapefile" button 
         this.action_buttons.addEventListener("load-shapefiles", ()=>this.load_shapefiles());
 
         // Handle the "Save Changes" button
-        this.action_buttons.addEventListener("save-changes", ()=>{
-            this.shapefiles.forEach(shp=>shp.save());
+        this.action_buttons.addEventListener("save-changes", async ()=>{
+            await Promise.all(this.shapefiles.map(shp=>shp.save()));
+            this.action_buttons.unsaved = false;
+            alert("All modifications saved");
         });
 
         // Handle the "Clear Associations" button (after user clicks confirm)
@@ -142,33 +161,20 @@ export class App extends LitElement{
                 const point_sections = await (points as Shapefile).identify_section_associations(sections, max_dist);
 
                 // delete low coverage sections
-                point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>{s.set_points_deleted()});
+                point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>s.set_points_deleted());
 
                 // mark high coverage sections
-                point_sections.filter(p=>p.coverage >= min_coverage).forEach(s=>s.set_points_to_section());
+                const valid_point_sections = point_sections.filter(p=>p.coverage >= min_coverage);
+                valid_point_sections.forEach(s=>s.set_points_to_section());
 
-
-                // associate each section with all the point sections that correspond to it
-                const feature_map = new Map<DbfFeature, PointSection[]>();
-                (sections as Shapefile).features.forEach(f=>feature_map.set(f, []));
-                point_sections.forEach(sec=>{
-                    if(sec.section && sec.coverage > min_coverage){
-                        feature_map.get(sec.section).push(sec);
-                    }
-                });
-
-                let featuers_arr: SectionInfo[] = [];
-                feature_map.forEach((v,k)=>{
-                    featuers_arr.push({point_secs: v, feature: k});
-                });
-                featuers_arr.sort((a,b)=>{
+                const features_arr = this.match_sections(sections, valid_point_sections);
+                
+                features_arr.sort((a,b)=>{
                     return a.point_secs.reduce((a,b)=>a+b.coverage, 0) - b.point_secs.reduce((a,b)=>a+b.coverage, 0)
                 })
-
-                // update the section picker ui
-                this.section_array.sections = featuers_arr;
+                this.section_array.sections = features_arr;
                 this.section_array.current_idx = 0;
-                (points as Shapefile).restyle_all();
+                points.restyle_all();
             } else {
                 alert("Point and section shapefiles not loaded");
             }
@@ -192,6 +198,81 @@ export class App extends LitElement{
         })
     }
 
+    private incremental_update_section_list(points_file: Shapefile, sections_file: Shapefile, sections: DbfFeature[]){
+        const new_sections = points_file.make_partial_point_sections(sections, sections_file);
+
+        const all_sections = this.section_array.sections;
+
+        all_sections.forEach(s=>{
+            if(sections.some(sec=>sec == s.feature)){
+                s.point_secs = new_sections.filter(point_section=>point_section.section == s.feature);
+            }
+        });
+
+        this.section_array.requestUpdate();
+    }
+
+    private refresh_section_list(match_order: boolean) {
+        const points = this.action_buttons.points_shapefile;
+        const sections_file = this.action_buttons.sections_shapefile;
+
+        if(!points || !sections_file) return;
+
+        const sections = points.make_point_sections(sections_file);
+        const featuers_arr = this.match_sections(sections_file, sections, match_order ? this.section_array.sections: []);
+        
+        if(!match_order){
+            featuers_arr.sort((a,b)=>{
+                return a.point_secs.reduce((a,b)=>a+b.coverage, 0) - b.point_secs.reduce((a,b)=>a+b.coverage, 0)
+            })
+        }
+
+        // update the section picker ui
+        this.section_array.sections = featuers_arr;
+        this.section_array.current_idx = 0;
+    }
+
+    private match_order(sections: SectionInfo[], ordering: SectionInfo[]): SectionInfo[] {
+        const map = new Map<DbfFeature, SectionInfo>();
+        sections.forEach(s=>map.set(s.feature, s));
+
+        let ret: SectionInfo[] = [];
+
+        ordering.forEach(o => {
+            const found = map.get(o.feature);
+            if(found){
+                ret.push(found);
+                map.delete(o.feature);
+            }
+        });
+
+
+        //put elements that weren't in the ordering at the end
+        map.forEach((v, k)=>{
+            ret.push(v);
+        })
+
+        return ret;
+    }
+
+    private match_sections(section_file: Shapefile, point_sections: PointSection[], ordering: SectionInfo[] = []): SectionInfo[] {
+        // associate each section with all the point sections that correspond to it
+        const feature_map = new Map<DbfFeature, PointSection[]>();
+        section_file.features.forEach(f=>feature_map.set(f, []));
+        point_sections.forEach(sec=>{
+            if(sec.section){
+                feature_map.get(sec.section).push(sec);
+            }
+        });
+
+        const sections = Array.from(feature_map.entries()).map(([feature, points])=>{return {point_secs: points, feature: feature, is_resolved: feature.dbf_properties.is_resolved}});
+
+        if(ordering.length == 0) return sections;
+
+        return this.match_order(sections, ordering);
+
+
+    }
     /**
      * Create a view to focus a specific feature
      * @param f Feature to view
@@ -254,6 +335,7 @@ export class App extends LitElement{
 
     private add_shapefile(shape: Shapefile){
         this.shapefile_selector.add_shapefile(shape);
+        shape.set_dirty_callback(()=>this.set_unsaved());
         this.map.addLayer(shape.layer);
         if(shape.routes){
             shape.layer.setZIndex(2);
@@ -284,6 +366,12 @@ export class App extends LitElement{
             center: center,
             zoom: 10
         }));
+
+        this.refresh_section_list(false);
+    }
+
+    private set_unsaved(){
+        this.action_buttons.unsaved = true;
     }
 
     

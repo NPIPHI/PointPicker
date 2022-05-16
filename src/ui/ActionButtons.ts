@@ -10,6 +10,8 @@ export class ActionButtons extends LitElement {
     sections_shapefile: Shapefile;
     @property()
     min_coverage: number = 30;
+    @property()
+    unsaved: boolean = false;
 
 
     on_load_shapefiles(){
@@ -46,8 +48,8 @@ export class ActionButtons extends LitElement {
 
     render() {
         return html`
-            <button @click=${this.on_load_shapefiles}>Load Shapefile</button>
-            <button @click=${this.on_save}>Save Changes</button>
+            <button @click=${this.on_load_shapefiles}>Select Shapefile Folder</button>
+            <button class=${this.unsaved ? "unsaved" : "saved"} @click=${this.on_save}>Save Changes</button>
             <button @click=${this.on_export}>Export</button>
             <div>
                 <button @click=${this.on_assign_sections}>Auto Assign Sections</button>
@@ -64,6 +66,14 @@ export class ActionButtons extends LitElement {
             padding: 5px;
             margin: 5px;
             border-radius: 5px;
+        }
+
+        .saved {
+            opacity: 30%;
+        }
+
+        .unsaved {
+            border: 3px solid blue;
         }
     `
 }

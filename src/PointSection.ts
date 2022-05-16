@@ -21,10 +21,12 @@ export class PointSection {
     }
 
     set_points_deleted(){
+        this.points[0].parent_shapefile.set_unsaved();
         this.points.forEach(p=>p.dbf_properties.SectionID = "Deleted");
     }
 
     set_points_to_section(){
+        this.points[0].parent_shapefile.set_unsaved();
         this.points.forEach(p=>{if(!p.dbf_properties.SectionID) p.dbf_properties.SectionID = this.section_id});
     }
 
