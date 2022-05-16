@@ -468,6 +468,19 @@ export class Shapefile {
         }
     }
 
+
+    for_each_async<T>(arr: T[], func: (arg0: T)=>void){
+        let i = 0;
+        const interval = setInterval(()=>{
+            for(let j = i; j < i + 20000 && j < arr.length; j++){
+                func(arr[j]);
+            }
+            i += 20000;
+            if(i >= arr.length){
+                clearInterval(interval);
+            }
+        }, 200);
+    }
     /**
      * Restyles all features with the current style set by the features section id and highlighted status
      * 
@@ -477,7 +490,9 @@ export class Shapefile {
         const highlighted_set = new Set(this.highlighted);
         if(this.routes){
             let route_set = new Set(this.routes.visible);
-            this.features.forEach(f=>{
+            this.for_each_async(this.features,
+            // this.features.forEach(
+                f=>{
                 if(route_set.has(f.dbf_properties.Route)){
                     if(highlighted_set.has(f)){
                         f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)])
@@ -487,9 +502,11 @@ export class Shapefile {
                 } else {
                     f.setStyle(new Style());
                 }
-            })
+            });
         } else {
-            this.features.forEach(f=>{
+            this.for_each_async(this.features, 
+            // this.features.forEach(f=>{
+                f=>{
                 if(highlighted_set.has(f)){
                     f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)])
                 } else {
