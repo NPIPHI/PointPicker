@@ -33,7 +33,7 @@ async function load_projection(file: FileSystemFileHandle, dest_projection: stri
 /**
  * Feature with dbf data attached
  */
-export type DbfFeature = Feature<Geometry> & { dbf_properties?: any, is_start_stop?: boolean, parent_shapefile: Shapefile }
+export type DbfFeature = Feature<Geometry> & {dbf_properties?: any, is_start_stop?: boolean, parent_shapefile: Shapefile }
 /**
  * Loads one shape and associated metadata from a folder
  * @param filename Name of the shape file (not including .shp)
@@ -41,7 +41,7 @@ export type DbfFeature = Feature<Geometry> & { dbf_properties?: any, is_start_st
  * @param folder Folder containing the .shp, .prj and .dbf files
  * @returns shapefile object
  */
-async function load_shapefile(filename: string, dest_projection: string, folder: FileSystemHandle[]): Promise<Shapefile> {
+async function load_shapefile(filename: string, dest_projection: string, folder: FileSystemHandle[], pick_primary_key: (filename: string, options: string[], suggested?: string) => Promise<string>): Promise<Shapefile> {
     const proj_file = <FileSystemFileHandle>folder.find(f => f.name == `${filename}.prj`);
     const shape_file = <FileSystemFileHandle>folder.find(f => f.name == `${filename}.shp`);
     const dbf_file = <FileSystemFileHandle>folder.find(f => f.name == `${filename}.dbf`);
@@ -102,9 +102,19 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
         geo_json[i].dbf_properties = shapes.features[i].properties
     }
 
-    const dbf_props = Object.keys(shapes.features[0]?.properties);
+    const dbf_props = Object.keys(shapes.features[0]?.properties).map(k=>k.trimEnd());
 
-    return new Shapefile(filename, geo_json, dbf_props, dbf_file);
+    const primary_key = await (async ()=>{
+        if(dbf_props.includes("Route")){
+            return "Route";
+        } else if(dbf_props.includes("UniqueID")){
+            return "UniqueID";
+        } else {
+            return await pick_primary_key(filename, dbf_props);
+        }
+    })();
+
+    return new Shapefile(filename, geo_json, dbf_props, dbf_file, primary_key);
 }
 
 /**
@@ -113,7 +123,7 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
  * @param folder folder to load shapefiles from
  * @returns array of shapefiles
  */
-export async function load_shapefiles(dest_projection: string, folder: FileSystemHandle[]): Promise<Shapefile[]> {
+export async function load_shapefiles(dest_projection: string, folder: FileSystemHandle[], pick_primary_key?: (filename: string, options: string[], suggested?: string) => Promise<string>): Promise<Shapefile[]> {
     const shape_file_names = folder.filter(f => {
         if (f instanceof FileSystemFileHandle) {
             return extension_of(f) == "shp";
@@ -122,9 +132,14 @@ export async function load_shapefiles(dest_projection: string, folder: FileSyste
         }
     }).map(f => f.name.slice(0, f.name.length - ".shp".length));
 
-    return Promise.all(shape_file_names.map(name=>{
-        return load_shapefile(name, dest_projection, folder);
-    }));
+    let ret = [];
+
+    //have to await one by one because popup window must go in order
+    for(const name of shape_file_names){
+        ret.push(await load_shapefile(name, dest_projection, folder, pick_primary_key));
+    }
+
+    return ret;
 }
 
 /**
@@ -146,7 +161,7 @@ export class Shapefile {
      * @param props array of available dbf properties on those features
      * @param dbf_file dbf file (so that the shapefile can save changes to dbf features)
      */
-    constructor(public name : string, public features: DbfFeature[], public props: string[], private dbf_file: FileSystemFileHandle){
+    constructor(public name : string, public features: DbfFeature[], public props: string[], private dbf_file: FileSystemFileHandle, private primary_key: string){
         features.forEach(f=>f.parent_shapefile=this);
         this.line_width = 4;
         this.set_visible_props([]);
@@ -158,7 +173,7 @@ export class Shapefile {
             source: this.vector_source,
         })
 
-        if(props.indexOf("Route") != -1) {
+        if(props.includes("Route")) {
             let routes = new Set<string>();
             features.forEach(f=>{
                 if(f.dbf_properties.Route){
@@ -173,6 +188,12 @@ export class Shapefile {
         } else {
             this.routes = null;
         }
+    }
+
+    primary_key_of(feature: DbfFeature): string {
+        if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
+        
+        return feature.dbf_properties[this.primary_key];
     }
 
     set_unsaved() {
@@ -221,7 +242,7 @@ export class Shapefile {
     make_partial_point_sections(sections: DbfFeature[], section_file: Shapefile): PointSection[] {
 
         const sections_set = new Set<string>();
-        sections.forEach(s=>sections_set.add(s.dbf_properties.UniqueID));
+        sections.forEach(s=>sections_set.add(s.parent_shapefile.primary_key_of(s)));
         return Array.from(this.make_point_routes().entries()).flatMap(([route, features])=>{
             if(features.some(f=>sections_set.has(f.dbf_properties.SectionID))) {
                 return PointSection.from_point_array(features, features.map(f=>f.dbf_properties.SectionID), section_file);
@@ -265,7 +286,7 @@ export class Shapefile {
             const nearest = run.map(f=>{
                 const {seg, dist} = rstar_associations.get(f);
                 return {
-                    sec_id: seg.dbf_properties.UniqueID,
+                    sec_id: seg.parent_shapefile.primary_key_of(seg),
                     dist: dist
                 };
             });
@@ -440,7 +461,7 @@ export class Shapefile {
             return new Style({
                 stroke: new Stroke({
                     width: this.line_width * 2,
-                    color: this.color_of_section(feature.dbf_properties.UniqueID)
+                    color: this.color_of_section(this.primary_key_of(feature))
                 }),
             })
         }
@@ -513,7 +534,7 @@ export class Shapefile {
             return new Style({
                 stroke: new Stroke({
                     width: this.line_width,
-                    color: this.color_of_section(feature.dbf_properties.UniqueID)
+                    color: this.color_of_section(this.primary_key_of(feature))
                 })
             })
         }
@@ -618,7 +639,7 @@ export class Shapefile {
             throw new Error("Bad geometry types for p1, p2");
         }
 
-        const id = section.dbf_properties.UniqueID;
+        const id = section.parent_shapefile.primary_key_of(section);
 
         this.points_between(p1, p2).forEach((f)=>{
             f.dbf_properties.SectionID = id; 
@@ -763,7 +784,7 @@ export class Shapefile {
                 const {features, section_id} = s;
                 const start = features[0];
                 const end = features[features.length-1];
-                const section = sections_file.features.find(s=>s.dbf_properties.UniqueID == section_id);
+                const section = sections_file.features.find(s=>s.parent_shapefile.primary_key_of(s) == section_id);
                 return [start.dbf_properties.Route, 
                     start.dbf_properties.FIS_Count, 
                     end.dbf_properties.FIS_Count, 

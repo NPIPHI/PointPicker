@@ -109,7 +109,7 @@ export class PointSelector extends LitElement {
         return html`
         <div class="container">
             <div class="next-action">Select Points And Section</div>
-            <div>Section: ${this.section ? `${this.section.dbf_properties.NAME}-${this.section.dbf_properties.UniqueID}` : "Not Selected"}</div>
+            <div>Section: ${this.section ? `${this.section.dbf_properties.NAME}-${this.section.parent_shapefile.primary_key_of(this.section)}` : "Not Selected"}</div>
             <div>Point 1: ${this.start_point ? `${this.start_point.dbf_properties.Route}-${this.start_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
             <div>Point 2: ${this.end_point ? `${this.end_point.dbf_properties.Route}-${this.end_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
             <button @click=${this.associate_points} class=${(this.start_point && this.end_point && this.section)?  "" : "grayed"}>Associate Point${(this.start_point == this.end_point) ? "" : "s"}</button>

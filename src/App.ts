@@ -14,6 +14,7 @@ import { PointSelector } from "./ui/PointSelector";
 import { SectionArray, SectionInfo } from "./ui/SectionArray";
 import { LineString, MultiLineString, Point } from "ol/geom";
 import { distance } from "ol/coordinate";
+import { PickOne } from "./ui/PickOne";
 
 /**
  * Class that represents the state of the whole app
@@ -101,7 +102,7 @@ export class App extends LitElement{
         this.point_selector.addEventListener("associate-points", (evt: CustomEvent)=>{
             const {start_point, end_point, section, point_shp, section_shp} = evt.detail;
             const effected_sections = new Set<string>();
-            effected_sections.add(section.dbf_properties.UniqueID);
+            effected_sections.add(section.parent_shapefile.primary_key(section));
             (point_shp as Shapefile).points_between(start_point, end_point).forEach(p=>effected_sections.add(p.dbf_properties.SectionID));
 
             point_shp.associate_points(start_point, end_point, section);
@@ -109,7 +110,7 @@ export class App extends LitElement{
             section_shp.clear_highlighted();
 
 
-            this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.dbf_properties.UniqueID)));
+            this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.parent_shapefile.primary_key_of(f))));
             // this.refresh_section_list(true);
         });
 
@@ -127,7 +128,7 @@ export class App extends LitElement{
             this.refresh_section_list(true);
 
 
-            this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.dbf_properties.UniqueID)));
+            this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.parent_shapefile.primary_key_of(f))));
         });
 
         // Handle the "Load Shapefile" button 
@@ -350,7 +351,7 @@ export class App extends LitElement{
      */
     private async load_shapefiles(){
         const folder = await get_folder();
-        const shapefiles = await load_shapefiles("EPSG:3857", folder);
+        const shapefiles = await load_shapefiles("EPSG:3857", folder, this.select_one);
         const center = shapefiles[0]?.features[0]?.getGeometry().getClosestPoint([0, 0]) || [0, 0];
 
         shapefiles.forEach((s)=>{
@@ -374,7 +375,28 @@ export class App extends LitElement{
         this.action_buttons.unsaved = true;
     }
 
-    
+    private select_one(shapefile_name: string, strs: string[], suggested?: string): Promise<string> {
+        if(strs.length == 0 || (suggested && !strs.includes(suggested))){
+            throw new Error("bad strs list");
+        }
+        const default_idx = strs.includes(suggested) ? strs.indexOf(suggested) : 0;
+
+        return new Promise((res, rej)=>{
+            const ele = new PickOne(shapefile_name, strs, default_idx);
+
+            ele.addEventListener("ok-selection", (evt: CustomEvent)=>{
+                document.body.removeChild(ele);
+                res(evt.detail);
+            });
+
+            ele.addEventListener("cancel-selection", ()=>{
+                document.body.removeChild(ele);
+                rej();
+            });
+
+            document.body.appendChild(ele);
+        })
+    }
     
     render(){
         return html`
