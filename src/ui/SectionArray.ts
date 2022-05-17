@@ -169,7 +169,7 @@ export class SectionArray extends LitElement {
         if(evt.key == 'r'){
             if(this.sections.length > this.current_idx){
                 this.on_resolve(this.sections[this.current_idx]);
-                this.shadowRoot.getElementById(`${(this.current_idx - 1)}`).scrollIntoView();
+                this.scroll_to(this.current_idx - 1);
             }
         }
     }
@@ -187,6 +187,23 @@ export class SectionArray extends LitElement {
     private update_max(evt: Event){
         const percent = parseFloat((evt.currentTarget as HTMLInputElement).value);   
         if(!isNaN(percent)) this.max_percent = percent;
+    }
+
+    private scroll_to(idx: number){
+        if(idx < 0 || idx >= this.sections.length) return;
+        this.shadowRoot.getElementById(`${idx}`).scrollIntoView();
+    }
+
+    private search_update(evt: Event){
+        const ele = evt.currentTarget as HTMLInputElement;
+
+        const search = ele.value.toLowerCase();
+
+        const idx = this.sections.findIndex(s=>s.feature.dbf_properties.NAME.toLowerCase().startsWith(search));
+
+        if(idx != -1){
+            this.scroll_to(idx);
+        }
     }
 
     render() {
@@ -217,6 +234,9 @@ export class SectionArray extends LitElement {
                     <br>
                     Max: <input @input=${this.update_max} value=Infinity>
                 </div>
+            </div>
+            <div>
+                Search: <input @input=${this.search_update} @focusin=${()=>this.text_focused = true} @focusout=${()=>this.text_focused = false}>
             </div>
 
             <div class="container" 
