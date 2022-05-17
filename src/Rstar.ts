@@ -1,16 +1,6 @@
 import { LineString, MultiLineString, Point } from "ol/geom";
 import { DbfFeature, Shapefile } from "./Shapefile";
-
-type WasmRstar = typeof import("../rust/pkg");
-
-let _cache_rstar : WasmRstar;
-
-export async function get_rstar(): Promise<WasmRstar>{
-    if(!_cache_rstar){
-        _cache_rstar = await (await import("../rust/pkg")).default;
-    }
-    return _cache_rstar;
-}
+import { get_wasm } from "./WasmModule";
 
 function line_to_flat(l: LineString, idx: number): number[]{
     const coords = l.getCoordinates();
@@ -38,7 +28,7 @@ export async function nearest_segments(points: Shapefile, segments: Shapefile): 
         }
     }));
 
-    const rstar = await get_rstar();
+    const rstar = await get_wasm();
     const associations = rstar.compute_nearest(lines_arr, points_arr);
 
     let ret = new Map();

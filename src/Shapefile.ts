@@ -13,6 +13,7 @@ import VectorImageLayer from "ol/layer/VectorImage";
 import { Color } from "ol/color";
 import { PointSection } from "./PointSection";
 import { nearest_segments } from "./Rstar";
+import { parse as parse_dbf } from "./dbf2/dbf";
 
 const dbf: { structure: (data: any[], meta?: any[])=> ArrayBuffer} = require("./dbf/index");
 
@@ -64,7 +65,14 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
             return null;
         }
     })();
-    const shapes = await shapefile.read(contents, dbf);
+
+    const dbf_rows = await parse_dbf(dbf);
+    const shapes = await shapefile.read(contents);
+
+    for(let i = 0; i < dbf_rows.length; i++){
+        shapes.features[i].properties = dbf_rows[i];
+    }
+
     if (shapes.bbox) {
         shapes.bbox = null;
     }
