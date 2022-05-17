@@ -168,14 +168,17 @@ export class App extends LitElement{
                 const valid_point_sections = point_sections.filter(p=>p.coverage >= min_coverage);
                 valid_point_sections.forEach(s=>s.set_points_to_section());
 
-                const features_arr = this.match_sections(sections, valid_point_sections);
-                
-                features_arr.sort((a,b)=>{
-                    return a.point_secs.reduce((a,b)=>a+b.coverage, 0) - b.point_secs.reduce((a,b)=>a+b.coverage, 0)
-                })
-                this.section_array.sections = features_arr;
-                this.section_array.current_idx = 0;
+                this.refresh_section_list(false);
                 points.restyle_all();
+
+                // const features_arr = this.match_sections(sections, valid_point_sections);
+                
+                // features_arr.sort((a,b)=>{
+                //     return a.point_secs.reduce((a,b)=>a+b.coverage, 0) - b.point_secs.reduce((a,b)=>a+b.coverage, 0)
+                // })
+                // this.section_array.sections = features_arr;
+                // this.section_array.current_idx = 0;
+                // points.restyle_all();
             } else {
                 alert("Point and section shapefiles not loaded");
             }
@@ -266,7 +269,7 @@ export class App extends LitElement{
             }
         });
 
-        const sections = Array.from(feature_map.entries()).map(([feature, points])=>{return {point_secs: points, feature: feature, is_resolved: feature.dbf_properties.is_resolved}});
+        const sections = Array.from(feature_map.entries()).map(([feature, points])=>{return {point_secs: points, feature: feature, is_resolved: feature.dbf_properties.assoc_res}});
 
         if(ordering.length == 0) return sections;
 

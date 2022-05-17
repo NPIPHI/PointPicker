@@ -60,7 +60,7 @@ function parse_field(buffer: Uint8Array, ptr: number, decoder: TextDecoder, fiel
         case 76:
             if(str == 'n' || str == 'f' || str == 'N' || str == 'F'){
                 return false;
-            } else if(str == 'y' || str == 'f' || str == 'Y' || str == 'F') {
+            } else if(str == 'y' || str == 't' || str == 'Y' || str == 'T') {
                 return true;
             } else {
                 return null;

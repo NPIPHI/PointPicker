@@ -272,13 +272,13 @@ export class Shapefile {
 
     set_unresolved(feature: DbfFeature) {
         if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
-        feature.dbf_properties.is_resolved = false;
+        feature.dbf_properties.assoc_res = false;
         this.set_unsaved();
     }
 
     set_resolved(feature: DbfFeature) {
         if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
-        feature.dbf_properties.is_resolved = true;
+        feature.dbf_properties.assoc_res = true;
         this.set_unsaved();
     }
 
@@ -638,7 +638,7 @@ export class Shapefile {
 
     clear_selections(){
         this.features.forEach(f=>f.dbf_properties.SectionID = null);
-        this.features.forEach(f=>f.dbf_properties.is_resolved = null);
+        this.features.forEach(f=>f.dbf_properties.assoc_res = null);
 
         this.restyle_all();
         this.set_unsaved();

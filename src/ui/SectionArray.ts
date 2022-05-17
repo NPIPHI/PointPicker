@@ -38,7 +38,7 @@ class SectionElement extends LitElement {
     }
 
     private add_note(){
-        this.section.feature.dbf_properties.note = "";
+        this.section.feature.dbf_properties.assoc_note = "";
         this.requestUpdate();
     }
 
@@ -57,7 +57,7 @@ class SectionElement extends LitElement {
 
         const ele = evt.currentTarget as HTMLTextAreaElement;
         if(ele.value.length > 250) ele.value = ele.value.slice(0, 250);
-        this.section.feature.dbf_properties.note = ele.value;
+        this.section.feature.dbf_properties.assoc_note = ele.value;
 
     }
 
@@ -74,8 +74,8 @@ class SectionElement extends LitElement {
                         :
                             html`<button class="resolve_button" @click=${this.on_resolve}>Resolve ${this.focused ? "(r)" : ""}</button>`
                         }
-                        ${typeof this.section.feature.dbf_properties.note == "string" ? 
-                            html`<textarea @focusin=${this.text_focus} @focusout=${this.text_unfocus} @input=${(evt: Event)=>this.update_note(evt)} class="note">${this.section.feature.dbf_properties.note}</textarea>
+                        ${typeof this.section.feature.dbf_properties.assoc_note == "string" ? 
+                            html`<textarea @focusin=${this.text_focus} @focusout=${this.text_unfocus} @input=${(evt: Event)=>this.update_note(evt)} class="note">${this.section.feature.dbf_properties.assoc_note}</textarea>
                             ${this.text_focused ? html`<br>250 char limit` : ""}
                             `
                         : 
@@ -147,6 +147,7 @@ export class SectionArray extends LitElement {
 
     private on_resolve(pts: SectionInfo){
         pts.is_resolved = true;
+        pts.feature.parent_shapefile.set_resolved(pts.feature);
         this.current_idx = this.sections.indexOf(pts) + 1;
         if(this.current_idx < this.sections.length){
             this.dispatch_focus(this.sections[this.current_idx]);
