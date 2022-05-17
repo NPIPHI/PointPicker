@@ -5,6 +5,88 @@ import { DbfFeature } from "../Shapefile";
 
 export type SectionInfo = {feature: DbfFeature, point_secs: PointSection[], is_resolved? : boolean};
 
+
+@customElement("section-element")
+class SectionElement extends LitElement {
+    @property()
+    section: SectionInfo;
+
+    @property()
+    focused: boolean;
+
+    @property()
+    text_focused: boolean = false;
+
+    static styles = css`
+    .resolved {
+        background-color: lightgreen;
+    }
+    
+    `
+
+    private on_resolve(){
+        this.section.is_resolved = true;
+        this.section.feature.parent_shapefile.set_resolved(this.section.feature);
+        this.dispatchEvent(new CustomEvent("resolve", {detail: this.section, bubbles: true}))
+        this.requestUpdate();
+    }
+
+    private on_unresolve(){
+        this.section.is_resolved = false;
+        this.section.feature.parent_shapefile.set_unresolved(this.section.feature);
+        this.requestUpdate();
+    }
+
+    private add_note(){
+        this.section.feature.dbf_properties.note = "";
+        this.requestUpdate();
+    }
+
+    private text_focus(){
+        this.dispatchEvent(new CustomEvent("textFocus", {bubbles: true}))
+        this.text_focused = true;
+    }
+
+    private text_unfocus(){
+        this.dispatchEvent(new CustomEvent("textUnfocus", {bubbles: true}))
+        this.text_focused = false;
+    }
+
+    private update_note(evt: Event){
+        this.section.feature.parent_shapefile.set_unsaved();
+
+        const ele = evt.currentTarget as HTMLTextAreaElement;
+        if(ele.value.length > 250) ele.value = ele.value.slice(0, 250);
+        this.section.feature.dbf_properties.note = ele.value;
+
+    }
+
+    private on_focus_view(){
+        this.dispatchEvent(new CustomEvent("focusPoints", {detail: this.section, bubbles: true}));
+    }
+
+    protected render() {
+        return html`<div class=${this.section.is_resolved ? "resolved" : ""}>
+                        <div>${this.section.feature.dbf_properties.NAME}; Coverage: ${(this.section.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100).toPrecision(3)}%; Routes: ${this.section.point_secs.length}</div>
+                        <button @click=${this.on_focus_view}>View ${this.focused ? "(v)" : ""}</button>
+                        ${this.section.is_resolved ? 
+                            html`<button class="unresolve_button" @click=${this.on_unresolve}>Unresolve</button>`
+                        :
+                            html`<button class="resolve_button" @click=${this.on_resolve}>Resolve ${this.focused ? "(r)" : ""}</button>`
+                        }
+                        ${typeof this.section.feature.dbf_properties.note == "string" ? 
+                            html`<textarea @focusin=${this.text_focus} @focusout=${this.text_unfocus} @input=${(evt: Event)=>this.update_note(evt)} class="note">${this.section.feature.dbf_properties.note}</textarea>
+                            ${this.text_focused ? html`<br>250 char limit` : ""}
+                            `
+                        : 
+                            html`<button @click=${this.add_note}>Add Note</button>`
+                        }
+                    </div>
+                `
+    }
+}
+
+
 @customElement("point-fixer-array")
 export class SectionArray extends LitElement {
 
@@ -20,6 +102,20 @@ export class SectionArray extends LitElement {
     @property()
     current_idx: number = 0;
 
+    @property()
+    resolve_filter: "both" | "resolved" | "notresolved" = "both";
+
+    @property()
+    path_num_filter: "any" | "zero" | "multipule" = "any";
+
+    @property()
+    min_percent: number = 0;
+
+    @property()
+    max_percent: number = Infinity;
+
+    @property()
+    show_filter: boolean = false;
 
 
     private listener: (evt: KeyboardEvent)=>void;
@@ -33,66 +129,47 @@ export class SectionArray extends LitElement {
             overflow-y: scroll;
             max-height: 50vh;
             color: black;
+            border: 1px solid black;
         }
 
-        .resolved {
-            background-color: lightgreen;
+        .faded {
+            opacity: 30%;
+        }
+
+        .selected {
+            border: 3px solid blue;
+        }
+
+        .hide {
+            display: none;
         }
     `
-
-    private on_focus_view(pts: SectionInfo){
-        this.dispatchEvent(new CustomEvent("focus-points", {detail: pts}));
-    }
 
     private on_resolve(pts: SectionInfo){
         pts.is_resolved = true;
         this.current_idx = this.sections.indexOf(pts) + 1;
-        pts.feature.parent_shapefile.set_resolved(pts.feature);
         if(this.current_idx < this.sections.length){
-            this.dispatchEvent(new CustomEvent("focus-points", {detail: this.sections[this.current_idx]}));
+            this.dispatch_focus(this.sections[this.current_idx]);
         }
         this.requestUpdate();
     }
 
-    private on_unresolve(pts: SectionInfo){
-        pts.is_resolved = false;
-        pts.feature.parent_shapefile.set_unresolved(pts.feature);
-        this.requestUpdate();
-    }
 
-    private add_note(pts: SectionInfo){
-        pts.feature.dbf_properties.note = "";
-        this.requestUpdate();
-    }
-
-    private update_note(evt: Event, pts: SectionInfo){
-        pts.feature.parent_shapefile.set_unsaved();
-        pts.feature.dbf_properties.note = (evt.currentTarget as HTMLTextAreaElement).value.slice(0, 250);
-
-        // force text area to delete overflowing text
-        (evt.currentTarget as HTMLTextAreaElement).value = pts.feature.dbf_properties.note
-        this.requestUpdate()
-    }
-
-    private text_focus(){
-        this.text_focused = true;
-    }
-
-    private text_unfocus(){
-        this.text_focused = false;
+    private dispatch_focus(pts: SectionInfo){
+        this.dispatchEvent(new CustomEvent("focus-points", {detail: pts}));
     }
 
     handle_keyboard_shortcuts(evt: KeyboardEvent){
         if(this.text_focused) return; //don't handle keyboard inputs when the user is typing
         if(evt.key == 'v'){
             if(this.sections.length > this.current_idx){
-                this.on_focus_view(this.sections[this.current_idx]);
+                this.dispatch_focus(this.sections[this.current_idx]);
             }
         }
         if(evt.key == 'r'){
             if(this.sections.length > this.current_idx){
                 this.on_resolve(this.sections[this.current_idx]);
-                this.shadowRoot.getElementById(`${(this.current_idx - 1)}`)?.scrollIntoView();
+                this.shadowRoot.getElementById(`${(this.current_idx - 1)}`).scrollIntoView();
             }
         }
     }
@@ -102,31 +179,69 @@ export class SectionArray extends LitElement {
         window.removeEventListener('keydown', this.listener);
     }
 
+    private update_min(evt: Event){
+        const percent = parseFloat((evt.currentTarget as HTMLInputElement).value);
+        if(!isNaN(percent)) this.min_percent = percent;
+    }
+
+    private update_max(evt: Event){
+        const percent = parseFloat((evt.currentTarget as HTMLInputElement).value);   
+        if(!isNaN(percent)) this.max_percent = percent;
+    }
+
     render() {
         return html`
-        <div class="container">
+        <div>
             <div>Sections<br></div>
-            ${this.sections.map((p, i)=>
-                html`<div class=${p.is_resolved ? "resolved" : ""} id=${i}>
-                    <div>ID: ${p.feature.dbf_properties.NAME}; Coverage ${(p.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100).toPrecision(3)}%</div>
-                    <button @click=${()=>this.on_focus_view(p)}>View ${i == this.current_idx ? "(v)" : ""}</button>
-                    ${p.is_resolved ? 
-                        html`<button class="unresolve_button" @click=${()=>this.on_unresolve(p)}>Unresolve</button>`
-                    :
-                        html`<button class="resolve_button" @click=${()=>this.on_resolve(p)}>Resolve ${i == this.current_idx ? "(r)" : ""}</button>`
-                    }
-                    ${typeof p.feature.dbf_properties.note == "string" ? 
-                        html`<textarea @focusin=${this.text_focus} @focusout=${this.text_unfocus} @input=${(evt: Event)=>this.update_note(evt, p)} class="note">${p.feature.dbf_properties.note}</textarea>
-                        ${this.text_focused && p.feature.dbf_properties.note.length >100 ? html`(${p.feature.dbf_properties.note.length}/250)` : ""}
-                        `
-                    : 
-                        html`<button @click=${()=>this.add_note(p)}>Add Note</button>`
-                    }
+            <button @click=${()=>this.show_filter = true} class=${this.show_filter ? "hide" : ""}>Show Filter</button>
+            <button @click=${()=>this.show_filter = false} class=${!this.show_filter ? "hide" : ""}>Hide Filter</button>
+            <div class=${this.show_filter ? "" : "hide"}>
+                <div>
+                    Filter Resolved
+                    <button @click=${()=>this.resolve_filter = "resolved"} class=${this.resolve_filter == "resolved" ? "selected" : ""}>Resolved</button>
+                    <button @click=${()=>this.resolve_filter = "notresolved"} class=${this.resolve_filter == "notresolved" ? "selected" : ""}>Unresolved</button>
+                    <button @click=${()=>this.resolve_filter = "both"} class=${this.resolve_filter == "both" ? "selected" : ""}>Both</button>
                 </div>
-                
-                
-                `
-                )}
+                <br>
+                <div>
+                    Filter Routes
+                    <button @click=${()=>this.path_num_filter = "zero"} class=${this.path_num_filter == "zero" ? "selected" : ""}>Zero</button>
+                    <button @click=${()=>this.path_num_filter = "multipule"} class=${this.path_num_filter == "multipule" ? "selected" : ""}>Multiple</button>
+                    <button @click=${()=>this.path_num_filter = "any"} class=${this.path_num_filter == "any" ? "selected" : ""}>Any Number</button>
+                </div>
+                <br>
+                <div>
+                    Filter Coverage
+                    <br>
+                    Min: <input @input=${this.update_min} value=0>
+                    <br>
+                    Max: <input @input=${this.update_max} value=Infinity>
+                </div>
+            </div>
+
+            <div class="container" 
+                @textFocus=${()=>this.text_focused = true} 
+                @textUnfocus=${()=>this.text_focused = false}
+                @focusPoints=${(evt: CustomEvent)=>this.dispatch_focus(evt.detail)}
+                @resolve=${(evt: CustomEvent)=>this.on_resolve(evt.detail)}
+            >
+                ${this.sections
+                .filter(p=>{
+                    const coverage = p.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100;
+                    return coverage >= this.min_percent && coverage <= this.max_percent 
+                    && (
+                        (this.path_num_filter == "any")
+                        || (this.path_num_filter == "multipule" && p.point_secs.length > 1)
+                        || (this.path_num_filter == "zero" && p.point_secs.length == 0)
+                    )
+                    && (
+                        (this.resolve_filter == "resolved" && p.is_resolved)
+                        || (this.resolve_filter == "notresolved" && !p.is_resolved)
+                        || this.resolve_filter == "both"
+                    );
+                })
+                .map((p, i)=> html`<section-element id=${i} .section=${p} .focused=${i == this.current_idx}></section-element>`)}
+            </div>
         </div>
         `
     }
