@@ -67,7 +67,7 @@ class SectionElement extends LitElement {
 
     protected render() {
         return html`<div class=${this.section.is_resolved ? "resolved" : ""}>
-                        <div>${this.section.feature.dbf_properties.NAME}; Coverage: ${(this.section.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100).toPrecision(3)}%; Routes: ${this.section.point_secs.length}</div>
+                        <div>${this.section.feature.parent_shapefile.name_of(this.section.feature)}; Coverage: ${(this.section.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100).toPrecision(3)}%; Routes: ${this.section.point_secs.length}</div>
                         <button @click=${this.on_focus_view}>View ${this.focused ? "(v)" : ""}</button>
                         ${this.section.is_resolved ? 
                             html`<button class="unresolve_button" @click=${this.on_unresolve}>Unresolve</button>`
@@ -200,7 +200,7 @@ export class SectionArray extends LitElement {
 
         const search = ele.value.toLowerCase();
 
-        const idx = this.sections.findIndex(s=>s.feature.dbf_properties.NAME.toLowerCase().startsWith(search));
+        const idx = this.sections.findIndex(s=>s.feature.parent_shapefile.name_of(s.feature).toLowerCase().startsWith(search));
 
         if(idx != -1){
             this.scroll_to(idx);

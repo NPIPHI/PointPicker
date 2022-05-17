@@ -4,14 +4,14 @@ import { customElement, property } from "lit/decorators.js";
 
 @customElement("pick-one")
 export class PickOne extends LitElement {
-    constructor(name: string, props: string[], choice: number){
+    constructor(display_texxt: string, props: string[], choice: number){
         super();
-        this.name = name;
+        this.display_text = display_texxt;
         this.props = props;
         this.choice = choice;
     }
     @property()
-    name: string;
+    display_text: string;
 
     @property()
     props: string[] = [];
@@ -53,7 +53,7 @@ export class PickOne extends LitElement {
     protected render() {
         return html`
         <div class="outer">
-            <div>Select Unique ID for "${this.name}"</div>
+            <div>${this.display_text}</div>
             <select id="pick-one-selection">
                 ${this.props.map((p,i)=>{
                     return html`<option value=${p} ?selected=${i == this.choice}>${p}</option>`

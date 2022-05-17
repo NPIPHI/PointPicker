@@ -378,14 +378,14 @@ export class App extends LitElement{
         this.action_buttons.unsaved = true;
     }
 
-    private select_one(shapefile_name: string, strs: string[], suggested?: string): Promise<string> {
+    private select_one(display_text: string, strs: string[], suggested?: string): Promise<string> {
         if(strs.length == 0 || (suggested && !strs.includes(suggested))){
             throw new Error("bad strs list");
         }
         const default_idx = strs.includes(suggested) ? strs.indexOf(suggested) : 0;
 
         return new Promise((res, rej)=>{
-            const ele = new PickOne(shapefile_name, strs, default_idx);
+            const ele = new PickOne(display_text, strs, default_idx);
 
             ele.addEventListener("ok-selection", (evt: CustomEvent)=>{
                 document.body.removeChild(ele);

@@ -69,7 +69,7 @@ export class PointSelector extends LitElement {
 
     associate_points(e: Event){
         if(this.start_point && this.end_point && this.section){
-            if(this.start_point.dbf_properties.Route != this.end_point.dbf_properties.Route){
+            if(this.start_point.parent_shapefile.route_of(this.start_point) != this.end_point.parent_shapefile.route_of(this.end_point)){
                 this.error = "Start and end points must come from the same route";
             } else {
                 this.error = "";
@@ -89,7 +89,7 @@ export class PointSelector extends LitElement {
 
     delete_points(e: Event){
         if(this.start_point && this.end_point){
-            if(this.start_point.dbf_properties.Route != this.end_point.dbf_properties.Route){
+            if(this.start_point.parent_shapefile.route_of(this.start_point) != this.end_point.parent_shapefile.route_of(this.end_point)){
                 this.error = "Start and end points must come from the same route";
             } else {
                 this.error = "";
@@ -109,9 +109,9 @@ export class PointSelector extends LitElement {
         return html`
         <div class="container">
             <div class="next-action">Select Points And Section</div>
-            <div>Section: ${this.section ? `${this.section.dbf_properties.NAME}-${this.section.parent_shapefile.primary_key_of(this.section)}` : "Not Selected"}</div>
-            <div>Point 1: ${this.start_point ? `${this.start_point.dbf_properties.Route}-${this.start_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
-            <div>Point 2: ${this.end_point ? `${this.end_point.dbf_properties.Route}-${this.end_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
+            <div>Section: ${this.section ? `${this.section.parent_shapefile.name_of(this.section)}-${this.section.parent_shapefile.primary_key_of(this.section)}` : "Not Selected"}</div>
+            <div>Point 1: ${this.start_point ? `${this.start_point.parent_shapefile.route_of(this.start_point)}-${this.start_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
+            <div>Point 2: ${this.end_point ? `${this.end_point.parent_shapefile.route_of(this.end_point)}-${this.end_point.dbf_properties.FIS_Count}` : "Not Selected"}</div>
             <button @click=${this.associate_points} class=${(this.start_point && this.end_point && this.section)?  "" : "grayed"}>Associate Point${(this.start_point == this.end_point) ? "" : "s"}</button>
             <button @click=${this.delete_points} class=${(this.start_point || this.end_point) ? "" : "grayed"}>Delete Point${(this.start_point == this.end_point) ? "" : "s"}</button>
             <div style="color: red">${this.error}</div>

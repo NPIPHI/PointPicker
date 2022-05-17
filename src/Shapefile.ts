@@ -112,17 +112,29 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
 
     const dbf_props = Object.keys(shapes.features[0]?.properties).map(k=>k.trimEnd());
 
-    const primary_key = await (async ()=>{
-        if(dbf_props.includes("Route")){
-            return "Route";
-        } else if(dbf_props.includes("UniqueID")){
-            return "UniqueID";
-        } else {
-            return await pick_primary_key(filename, dbf_props);
-        }
-    })();
+    const is_points = geo_json[0].getGeometry().getType() == "Point";
 
-    return new Shapefile(filename, geo_json, dbf_props, dbf_file, primary_key);
+    if(is_points){
+        let route_str = "Route";
+        if(!dbf_props.includes("Route")){
+            route_str = await pick_primary_key(`Pick route identifier for ${filename}`, dbf_props);
+        }
+        return new Shapefile(filename, geo_json, dbf_props, dbf_file, route_str);
+    } else {
+        let unique_id = "UniqueID";
+
+        if(!dbf_props.includes("UniqueID")){
+            unique_id = await pick_primary_key(`Pick Unique Identifier for ${filename}`, dbf_props);
+        }
+
+        let name = "NAME";
+
+        if(!dbf_props.includes("NAME")){
+            name = await pick_primary_key(`Pick Name field for ${filename}`, dbf_props);
+        }
+
+        return new Shapefile(filename, geo_json, dbf_props, dbf_file, unique_id, name);
+    }
 }
 
 /**
@@ -170,7 +182,7 @@ export class Shapefile {
      * @param props array of available dbf properties on those features
      * @param dbf_file dbf file (so that the shapefile can save changes to dbf features)
      */
-    constructor(public name : string, public features: DbfFeature[], public props: string[], private dbf_file: FileSystemFileHandle, private primary_key: string){
+    constructor(public name : string, public features: DbfFeature[], public props: string[], private dbf_file: FileSystemFileHandle, private primary_key: string, private primary_name?: string){
         features.forEach(f=>f.parent_shapefile=this);
         this.line_width = 4;
         this.set_visible_props([]);
@@ -182,11 +194,13 @@ export class Shapefile {
             source: this.vector_source,
         })
 
-        if(props.includes("Route")) {
+
+        //if gps points file
+        if(!primary_name) {
             let routes = new Set<string>();
             features.forEach(f=>{
-                if(f.dbf_properties.Route){
-                    routes.add(f.dbf_properties.Route);
+                if(this.route_of(f)){
+                    routes.add(this.route_of(f));
                 }
             })
 
@@ -208,6 +222,19 @@ export class Shapefile {
         
         return feature.dbf_properties[this.primary_key];
     }
+    
+    name_of(feature: DbfFeature): string {
+        if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
+        
+        return feature.dbf_properties[this.primary_name];
+    }
+
+    route_of(feature: DbfFeature): string {
+        if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
+        
+        return feature.dbf_properties[this.primary_key];
+    }
+
 
     get_section_by_primary_key(key: string): DbfFeature {
         return this.feature_map.get(key);
@@ -581,7 +608,7 @@ export class Shapefile {
             let route_set = new Set(this.routes.visible);
             // this.for_each_async(this.features, f=>{
             this.features.forEach(f=>{
-                if(route_set.has(f.dbf_properties.Route)){
+                if(route_set.has(this.route_of(f))){
                     if(highlighted_set.has(f)){
                         f.setStyle([this.highlight_style(f), this.text_style(f, this.visible_props)])
                     } else {
@@ -674,11 +701,11 @@ export class Shapefile {
      * @returns array of points between p1 and p2
      */
     points_between(p1: DbfFeature, p2: DbfFeature): DbfFeature[]{
-        if(p1 && p2 && p1.dbf_properties.Route == p2.dbf_properties.Route){
+        if(p1 && p2 && this.route_of(p1) == this.route_of(p2)){
             const min_fis = Math.min(p1.dbf_properties.FIS_Count, p2.dbf_properties.FIS_Count);
             const max_fis = Math.max(p1.dbf_properties.FIS_Count, p2.dbf_properties.FIS_Count);
             return this.features.filter(f=>
-                (f.dbf_properties.Route == p1.dbf_properties.Route) &&
+                (this.route_of(f) == this.route_of(p1)) &&
                 (f.dbf_properties.FIS_Count >= min_fis && f.dbf_properties.FIS_Count <= max_fis)
             );
         } else {
@@ -760,10 +787,10 @@ export class Shapefile {
     private make_point_routes() : Map<string, DbfFeature[]>{
         const point_runs = new Map<string, DbfFeature[]>();
         this.features.forEach(f=>{
-            let route = point_runs.get(f.dbf_properties.Route);
+            let route = point_runs.get(this.route_of(f));
             if(!route) {
-                point_runs.set(f.dbf_properties.Route, []);
-                route = point_runs.get(f.dbf_properties.Route);
+                point_runs.set(this.route_of(f), []);
+                route = point_runs.get(this.route_of(f));
             }
     
             route.push(f);
@@ -802,7 +829,7 @@ export class Shapefile {
                 const start = features[0];
                 const end = features[features.length-1];
                 const section = sections_file.get_section_by_primary_key(section_id);
-                return [start.dbf_properties.Route, 
+                return [this.route_of(start), 
                     start.dbf_properties.FIS_Count, 
                     end.dbf_properties.FIS_Count, 
                     start.dbf_properties.AvgOfStati,
