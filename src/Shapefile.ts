@@ -162,6 +162,7 @@ export class Shapefile {
     private highlighted: DbfFeature[] = [];
     private modified: boolean = false;
     private dirty_callback: ()=>void = ()=>{};
+    private feature_map: Map<string, DbfFeature>;
     /**
      * Construct shapefile
      * @param name name of the shapefile
@@ -196,12 +197,20 @@ export class Shapefile {
         } else {
             this.routes = null;
         }
+        this.feature_map = new Map();
+        this.features.forEach(f=>{
+            this.feature_map.set(this.primary_key_of(f), f);
+        })
     }
 
     primary_key_of(feature: DbfFeature): string {
         if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
         
         return feature.dbf_properties[this.primary_key];
+    }
+
+    get_section_by_primary_key(key: string): DbfFeature {
+        return this.feature_map.get(key);
     }
 
     set_unsaved() {
@@ -792,7 +801,7 @@ export class Shapefile {
                 const {features, section_id} = s;
                 const start = features[0];
                 const end = features[features.length-1];
-                const section = sections_file.features.find(s=>s.parent_shapefile.primary_key_of(s) == section_id);
+                const section = sections_file.get_section_by_primary_key(section_id);
                 return [start.dbf_properties.Route, 
                     start.dbf_properties.FIS_Count, 
                     end.dbf_properties.FIS_Count, 

@@ -164,7 +164,7 @@ export class PointSection {
         for (let i = 0; i < points.length; i++) {
             if (section_assingments[i] != last_section_id) {
                 if (current_run.length > 0) {
-                    sections.push(new PointSection(current_run, sections_file.features.find(f => f.parent_shapefile.primary_key_of(f) == last_section_id)));
+                    sections.push(new PointSection(current_run, sections_file.get_section_by_primary_key(last_section_id)));
                 }
                 current_run = [];
                 last_section_id = section_assingments[i];
@@ -174,7 +174,7 @@ export class PointSection {
         }
 
         if (current_run.length > 0) {
-            sections.push(new PointSection(current_run, sections_file.features.find(f => f.parent_shapefile.primary_key_of(f) == last_section_id)));
+            sections.push(new PointSection(current_run, sections_file.get_section_by_primary_key(last_section_id)));
         }
 
         return sections;
