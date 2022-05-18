@@ -15,6 +15,7 @@ import { SectionArray, SectionInfo } from "./ui/SectionArray";
 import { LineString, MultiLineString, Point } from "ol/geom";
 import { distance } from "ol/coordinate";
 import { PickOne } from "./ui/PickOne";
+import { WorkingPopup } from "./ui/WorkingNotification";
 
 /**
  * Class that represents the state of the whole app
@@ -136,9 +137,16 @@ export class App extends LitElement{
 
         // Handle the "Save Changes" button
         this.action_buttons.addEventListener("save-changes", async ()=>{
-            await Promise.all(this.shapefiles.map(shp=>shp.save()));
-            this.action_buttons.unsaved = false;
-            alert("All modifications saved");
+            const ele = new WorkingPopup("Saving, Don't close the window");
+            document.body.appendChild(ele);
+
+            try {
+                await Promise.all(this.shapefiles.map(shp=>shp.save()));
+                this.action_buttons.unsaved = false;
+                alert("All modifications saved");
+            } catch(e){}
+            
+            document.body.removeChild(ele);
         });
 
         // Handle the "Clear Associations" button (after user clicks confirm)
@@ -148,28 +156,46 @@ export class App extends LitElement{
         });
 
         // Handle the "Export" button
-        this.action_buttons.addEventListener("export-csv", ()=>{
+        this.action_buttons.addEventListener("export-csv", async ()=>{
+            const ele = new WorkingPopup("Working");
+            document.body.appendChild(ele);
+            try {
             const section_file = this.action_buttons.sections_shapefile;
-            this.shapefiles.filter(s=>s.routes).forEach(s=>s.export_point_sections(section_file));
+            await Promise.all(this.shapefiles.filter(s=>s.routes).map(s=>s.export_point_sections(section_file)));
+            } catch(e){}
+            document.body.removeChild(ele);
         })
 
         // Handle the "Auto assign sections" button
         this.action_buttons.addEventListener("assign-sections", async (e: CustomEvent)=>{
             const {points, sections, min_coverage} = e.detail;
             if(points && sections){
-                //hard cutoff at 50 meters from nearest feature
-                const max_dist = 50;
-                const point_sections = await (points as Shapefile).identify_section_associations(sections, max_dist);
 
-                // delete low coverage sections
-                point_sections.filter(p=>p.associated_coverage < min_coverage).forEach(s=>s.set_points_deleted());
+                const ele = new WorkingPopup("Working");
+                document.body.appendChild(ele);
+                //put update in timeout so the loading bar is allowed to appear;
+                setTimeout(async ()=>{
+                    try {
 
-                // mark high coverage sections
-                const valid_point_sections = point_sections.filter(p=>p.associated_coverage >= min_coverage);
-                valid_point_sections.forEach(s=>s.set_points_to_section());
+                        //hard cutoff at 50 meters from nearest feature
+                        const max_dist = 50;
+                        const point_sections = await (points as Shapefile).identify_section_associations(sections, max_dist);
 
-                this.refresh_section_list(false);
-                points.restyle_all();
+                        // delete low coverage sections
+                        point_sections.filter(p=>p.associated_coverage < min_coverage).forEach(s=>s.set_points_deleted());
+
+                        // mark high coverage sections
+                        const valid_point_sections = point_sections.filter(p=>p.associated_coverage >= min_coverage);
+                        valid_point_sections.forEach(s=>s.set_points_to_section());
+
+                        this.refresh_section_list(false);
+                        points.restyle_all();
+
+                    } catch(e){}
+
+                    document.body.removeChild(ele);
+                }, 16);
+
             } else {
                 alert("Point and section shapefiles not loaded");
             }
@@ -345,24 +371,30 @@ export class App extends LitElement{
      */
     private async load_shapefiles(){
         const folder = await get_folder();
-        const shapefiles = await load_shapefiles("EPSG:3857", folder, this.select_one);
-        const center = shapefiles[0]?.features[0]?.getGeometry().getClosestPoint([0, 0]) || [0, 0];
 
-        shapefiles.forEach((s)=>{
-            this.add_shapefile(s);
-            if(s.routes){
-                this.action_buttons.points_shapefile = s;
-            } else {
-                this.action_buttons.sections_shapefile = s;
-            }
-        });    
+        const ele = new WorkingPopup("Loading");
+        document.body.appendChild(ele);
+        try {
+            const shapefiles = await load_shapefiles("EPSG:3857", folder, this.select_one);
+            const center = shapefiles[0]?.features[0]?.getGeometry().getClosestPoint([0, 0]) || [0, 0];
 
-        this.map.setView(new View({
-            center: center,
-            zoom: 10
-        }));
+            shapefiles.forEach((s)=>{
+                this.add_shapefile(s);
+                if(s.routes){
+                    this.action_buttons.points_shapefile = s;
+                } else {
+                    this.action_buttons.sections_shapefile = s;
+                }
+            });    
 
-        this.refresh_section_list(false);
+            this.map.setView(new View({
+                center: center,
+                zoom: 10
+            }));
+
+            this.refresh_section_list(false);
+        } catch(e){}
+        document.body.removeChild(ele);
     }
 
     private set_unsaved(){
