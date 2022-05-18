@@ -28,7 +28,7 @@ export class App extends LitElement{
             background-color: lightblue;
             display: grid;
             grid-template-rows: 1fr 1fr 10fr;
-            grid-template-columns: 1fr 1.3fr;
+            grid-template-columns: 1fr 1.6fr;
             max-height: 100vh;
         }
 
@@ -102,7 +102,7 @@ export class App extends LitElement{
         this.point_selector.addEventListener("associate-points", (evt: CustomEvent)=>{
             const {start_point, end_point, section, point_shp, section_shp} = evt.detail;
             const effected_sections = new Set<string>();
-            effected_sections.add(section.parent_shapefile.primary_key(section));
+            effected_sections.add(section.parent_shapefile.primary_key_of(section));
             (point_shp as Shapefile).points_between(start_point, end_point).forEach(p=>effected_sections.add(p.dbf_properties.SectionID));
 
             point_shp.associate_points(start_point, end_point, section);
@@ -162,23 +162,14 @@ export class App extends LitElement{
                 const point_sections = await (points as Shapefile).identify_section_associations(sections, max_dist);
 
                 // delete low coverage sections
-                point_sections.filter(p=>p.coverage < min_coverage).forEach(s=>s.set_points_deleted());
+                point_sections.filter(p=>p.associated_coverage < min_coverage).forEach(s=>s.set_points_deleted());
 
                 // mark high coverage sections
-                const valid_point_sections = point_sections.filter(p=>p.coverage >= min_coverage);
+                const valid_point_sections = point_sections.filter(p=>p.associated_coverage >= min_coverage);
                 valid_point_sections.forEach(s=>s.set_points_to_section());
 
                 this.refresh_section_list(false);
                 points.restyle_all();
-
-                // const features_arr = this.match_sections(sections, valid_point_sections);
-                
-                // features_arr.sort((a,b)=>{
-                //     return a.point_secs.reduce((a,b)=>a+b.coverage, 0) - b.point_secs.reduce((a,b)=>a+b.coverage, 0)
-                // })
-                // this.section_array.sections = features_arr;
-                // this.section_array.current_idx = 0;
-                // points.restyle_all();
             } else {
                 alert("Point and section shapefiles not loaded");
             }

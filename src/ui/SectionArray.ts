@@ -18,8 +18,12 @@ class SectionElement extends LitElement {
     text_focused: boolean = false;
 
     static styles = css`
-    .resolved {
+    .box.resolved {
         background-color: lightgreen;
+    }
+
+    .box {
+        padding: 5px;
     }
     
     `
@@ -49,6 +53,10 @@ class SectionElement extends LitElement {
 
     private text_unfocus(){
         this.dispatchEvent(new CustomEvent("textUnfocus", {bubbles: true}))
+        if(this.section.feature.dbf_properties.assoc_note == ""){
+            this.section.feature.dbf_properties.assoc_note = null;
+            this.requestUpdate();
+        }
         this.text_focused = false;
     }
 
@@ -66,21 +74,36 @@ class SectionElement extends LitElement {
     }
 
     protected render() {
-        return html`<div class=${this.section.is_resolved ? "resolved" : ""}>
-                        <div>${this.section.feature.parent_shapefile.name_of(this.section.feature)}; Coverage: ${(this.section.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100).toPrecision(3)}%; Routes: ${this.section.point_secs.length}</div>
-                        <button @click=${this.on_focus_view}>View ${this.focused ? "(v)" : ""}</button>
-                        ${this.section.is_resolved ? 
-                            html`<button class="unresolve_button" @click=${this.on_unresolve}>Unresolve</button>`
-                        :
-                            html`<button class="resolve_button" @click=${this.on_resolve}>Resolve ${this.focused ? "(r)" : ""}</button>`
-                        }
-                        ${typeof this.section.feature.dbf_properties.assoc_note == "string" ? 
-                            html`<textarea @focusin=${this.text_focus} @focusout=${this.text_unfocus} @input=${(evt: Event)=>this.update_note(evt)} class="note">${this.section.feature.dbf_properties.assoc_note}</textarea>
-                            ${this.text_focused ? html`<br>250 char limit` : ""}
-                            `
-                        : 
-                            html`<button @click=${this.add_note}>Add Note</button>`
-                        }
+        return html`<div class="box ${this.section.is_resolved ? "resolved" : ""}">
+                        <div>
+                            ${this.section.feature.parent_shapefile.name_of(this.section.feature)}-${this.section.feature.parent_shapefile.primary_key_of(this.section.feature)};
+                        </div>
+                        <div>
+                            Coverage: ${(this.section.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100).toPrecision(3)}%; 
+                            Routes: ${this.section.point_secs.length}
+                        </div>
+                        <div>
+                            <button @click=${this.on_focus_view}>View ${this.focused ? "(v)" : ""}</button>
+                            ${this.section.is_resolved ? 
+                                html`<button class="unresolve_button" @click=${this.on_unresolve}>Unresolve</button>`
+                            :
+                                html`<button class="resolve_button" @click=${this.on_resolve}>Resolve ${this.focused ? "(r)" : ""}</button>`
+                            }
+                            ${typeof this.section.feature.dbf_properties.assoc_note != "string" ?
+                                html`<button @click=${this.add_note}>Add Note</button>`
+                            :
+                                ""
+                            }
+                        </div>
+                        <div>
+                            ${typeof this.section.feature.dbf_properties.assoc_note == "string" ? 
+                                html`<textarea @focusin=${this.text_focus} @focusout=${this.text_unfocus} @input=${(evt: Event)=>this.update_note(evt)} class="note">${this.section.feature.dbf_properties.assoc_note}</textarea>
+                                ${this.text_focused ? html`<br>250 char limit` : ""}
+                                `
+                            : 
+                                ""
+                            }
+                        </div>
                     </div>
                 `
     }
@@ -116,6 +139,9 @@ export class SectionArray extends LitElement {
 
     @property()
     show_filter: boolean = false;
+
+    @property()
+    filter_str: string = "";
 
 
     private listener: (evt: KeyboardEvent)=>void;
@@ -198,13 +224,7 @@ export class SectionArray extends LitElement {
     private search_update(evt: Event){
         const ele = evt.currentTarget as HTMLInputElement;
 
-        const search = ele.value.toLowerCase();
-
-        const idx = this.sections.findIndex(s=>s.feature.parent_shapefile.name_of(s.feature).toLowerCase().startsWith(search));
-
-        if(idx != -1){
-            this.scroll_to(idx);
-        }
+        this.filter_str = ele.value.toLowerCase();
     }
 
     render() {
@@ -237,7 +257,7 @@ export class SectionArray extends LitElement {
                 </div>
             </div>
             <div>
-                Search: <input @input=${this.search_update} @focusin=${()=>this.text_focused = true} @focusout=${()=>this.text_focused = false}>
+                Filter Name: <input @input=${this.search_update} @focusin=${()=>this.text_focused = true} @focusout=${()=>this.text_focused = false}>
             </div>
 
             <div class="container" 
@@ -259,7 +279,8 @@ export class SectionArray extends LitElement {
                         (this.resolve_filter == "resolved" && p.is_resolved)
                         || (this.resolve_filter == "notresolved" && !p.is_resolved)
                         || this.resolve_filter == "both"
-                    );
+                    )
+                    && p.feature.parent_shapefile.name_of(p.feature)?.toLowerCase().startsWith(this.filter_str);
                 })
                 .map((p, i)=> html`<section-element id=${i} .section=${p} .focused=${i == this.current_idx}></section-element>`)}
             </div>

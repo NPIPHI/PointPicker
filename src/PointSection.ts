@@ -7,16 +7,16 @@ import { DbfFeature, Shapefile } from "./Shapefile";
  */
 export class PointSection {
     coverage: number;
+    associated_coverage: number;
     section_id: string;
     constructor(public points: DbfFeature[], public section: DbfFeature | null) {
         const len = this.length();
-        const sec_len = this.section_length();
+        const full_section_length = this.full_section_length();
+        const associated_section_length = this.associated_section_length();
 
-        if (sec_len == 0) {
-            this.coverage = 0;
-        } else {
-            this.coverage = len / sec_len;
-        }
+        this.coverage = full_section_length ? len / full_section_length : 0;
+        this.associated_coverage = associated_section_length ? len / associated_section_length : 0;
+
         this.section_id = section?.parent_shapefile.primary_key_of(section) || "";
     }
 
@@ -128,11 +128,24 @@ export class PointSection {
         return best;
     }
 
+    full_section_length(): number {
+        if (!this.section) return 0;
+        if (this.section.getGeometry().getType() == "LineString") {
+            const geo = this.section.getGeometry() as LineString;
+            return geo.getLength();
+        } else if (this.section.getGeometry().getType() == "MultiLineString") {
+            const geo = this.section.getGeometry() as MultiLineString;
+            return geo.getLineStrings().reduce((sum, line) => sum + line.getLength(), 0);
+
+        } else {
+            throw new Error(`unexpected geometry type for section: ${this.section.getGeometry().getType()}`);
+        }
+    }
     /**
      * Get the length of the associated section
      * @returns Length of section or 0 if section is null
      */
-    section_length(): number {
+    associated_section_length(): number {
         if (!this.section) return 0;
         if (this.section.getGeometry().getType() == "LineString") {
             const geo = this.section.getGeometry() as LineString;
