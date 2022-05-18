@@ -227,6 +227,36 @@ export class SectionArray extends LitElement {
         this.filter_str = ele.value.toLowerCase();
     }
 
+    private sort_alphabetical(order : "asc" | "dsc"){
+        if(order == "asc"){
+            this.sections.sort((a,b)=>{
+                return a.feature.parent_shapefile.name_of(a.feature).localeCompare(b.feature.parent_shapefile.name_of(b.feature))
+            })
+        } else {
+            this.sections.sort((a,b)=>{
+                return b.feature.parent_shapefile.name_of(b.feature).localeCompare(a.feature.parent_shapefile.name_of(a.feature))
+            })
+        }
+        this.requestUpdate();
+    }
+
+    private sort_coverage(order : "asc" | "dsc"){
+        if(order == "asc"){
+            this.sections.sort((a,b)=>{
+                return this.sum_coverage(a) - this.sum_coverage(b);
+            })
+        } else {
+            this.sections.sort((a,b)=>{
+                return this.sum_coverage(b) - this.sum_coverage(a);
+            })
+        }
+        this.requestUpdate();
+    }
+
+    private sum_coverage(pts: SectionInfo){
+        return pts.point_secs.reduce((sum, sec)=>sum + sec.coverage, 0);
+    }
+
     render() {
         return html`
         <div>
@@ -255,6 +285,15 @@ export class SectionArray extends LitElement {
                     <br>
                     Max: <input @input=${this.update_max} value=Infinity>
                 </div>
+                <br>
+                <div>
+                    Sort
+                    <button @click=${()=>this.sort_alphabetical("asc")}>Alphabetical (ascending)</button>
+                    <button @click=${()=>this.sort_alphabetical("dsc")}>Alphabetical (descending)</button>
+                    <button @click=${()=>this.sort_coverage("asc")}>Coverage (ascending)</button>
+                    <button @click=${()=>this.sort_coverage("dsc")}>Coverage (descending)</button>
+
+                </div>
             </div>
             <div>
                 Filter Name: <input @input=${this.search_update} @focusin=${()=>this.text_focused = true} @focusout=${()=>this.text_focused = false}>
@@ -268,7 +307,7 @@ export class SectionArray extends LitElement {
             >
                 ${this.sections
                 .filter(p=>{
-                    const coverage = p.point_secs.reduce((sum,f)=>sum + f.coverage, 0) * 100;
+                    const coverage = this.sum_coverage(p) * 100;
                     return coverage >= this.min_percent && coverage <= this.max_percent 
                     && (
                         (this.path_num_filter == "any")

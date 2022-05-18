@@ -110,8 +110,8 @@ export class App extends LitElement{
             section_shp.clear_highlighted();
 
 
-            this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.parent_shapefile.primary_key_of(f))));
-            // this.refresh_section_list(true);
+            // this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.parent_shapefile.primary_key_of(f))));
+            this.refresh_section_list(true);
         });
 
         // Handle the "Delete Points" button
@@ -128,7 +128,7 @@ export class App extends LitElement{
             this.refresh_section_list(true);
 
 
-            this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.parent_shapefile.primary_key_of(f))));
+            // this.incremental_update_section_list(point_shp, section_shp, section_shp.features.filter((f: DbfFeature)=>effected_sections.has(f.parent_shapefile.primary_key_of(f))));
         });
 
         // Handle the "Load Shapefile" button 

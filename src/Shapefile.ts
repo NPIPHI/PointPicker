@@ -69,10 +69,6 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
     const dbf_rows = await parse_dbf(dbf);
     const shapes = await shapefile.read(contents);
 
-    for(let i = 0; i < dbf_rows.length; i++){
-        shapes.features[i].properties = dbf_rows[i];
-    }
-
     if (shapes.bbox) {
         shapes.bbox = null;
     }
@@ -107,10 +103,11 @@ async function load_shapefile(filename: string, dest_projection: string, folder:
     const geo_json = <DbfFeature[]>await new GeoJSON().readFeatures(shapes);
 
     for (let i = 0; i < geo_json.length; i++) {
-        geo_json[i].dbf_properties = shapes.features[i].properties
+        // geo_json[i].dbf_properties = shapes.features[i].properties;
+        geo_json[i].dbf_properties = dbf_rows[i];
     }
 
-    const dbf_props = Object.keys(shapes.features[0]?.properties).map(k=>k.trimEnd());
+    const dbf_props = Object.keys(dbf_rows[0]);
 
     const is_points = geo_json[0].getGeometry().getType() == "Point";
 
@@ -226,7 +223,7 @@ export class Shapefile {
     name_of(feature: DbfFeature): string {
         if(feature.parent_shapefile != this) throw new Error("shapefile mismatch");
         
-        return feature.dbf_properties[this.primary_name];
+        return feature.dbf_properties[this.primary_name] || "NAME_MISSING";
     }
 
     route_of(feature: DbfFeature): string {
