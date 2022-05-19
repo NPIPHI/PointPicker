@@ -661,8 +661,8 @@ export class Shapefile {
     }
 
     clear_selections(){
-        this.features.forEach(f=>f.dbf_properties.SectionID = null);
-        this.features.forEach(f=>f.dbf_properties.assoc_res = null);
+        this.features.forEach(f=> delete f.dbf_properties.SectionID);
+        this.features.forEach(f=> delete f.dbf_properties.assoc_res);
 
         this.restyle_all();
         this.set_unsaved();
